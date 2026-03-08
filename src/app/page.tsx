@@ -12,6 +12,9 @@ export default function Home() {
           Coming soon.
         </p>
       </div>
+    <footer className="absolute bottom-0 w-full pb-4 text-center">
+      <p className="text-xs text-gray-400">Built by Harbly &bull; Data from Polymarket, Kalshi, and NOAA</p>
+    </footer>
     </div>
   );
 }
