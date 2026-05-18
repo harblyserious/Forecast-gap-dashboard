@@ -281,3 +281,8 @@ Three angles:
 - Migrated project from Windows PC to Mac
 - Reinstalled and verified all tools (Node.js, Git, VS Code)
 - Ready to begin Phase 2
+
+## UI Improvements Backlog
+
+- Filter out Kalshi markets where probability is 99%+ or 1% or less (not interesting, clutters view)
+- Sort Kalshi markets by temperature threshold in logical order (highest to lowest)
