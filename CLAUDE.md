@@ -276,3 +276,8 @@ Three angles:
 - Fixed NOAA coordinates: Central Park (40.7829, -73.9654) not downtown NYC (Hoboken grid)
 - Switched NWS comparison to use hourly endpoint + 24hr calendar-day max to match Kalshi resolution logic
 - Dashboard is live showing NWS 24hr max vs. Kalshi implied temp with gap indicator
+
+### 2026-05-18
+- Migrated project from Windows PC to Mac
+- Reinstalled and verified all tools (Node.js, Git, VS Code)
+- Ready to begin Phase 2
