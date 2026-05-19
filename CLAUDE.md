@@ -282,6 +282,17 @@ Three angles:
 - Reinstalled and verified all tools (Node.js, Git, VS Code)
 - Ready to begin Phase 2
 
+### 2026-05-19 (Days 39–42)
+- Set up Supabase project, created all four tables via create-schema.sql
+- Built and verified database.ts (typed insert/read functions)
+- Built fetch-markets pipeline: 12 Kalshi KXHIGHNY snapshots inserted
+- Built fetch-forecasts pipeline: NWS hourly 24hr max computed and inserted
+- Built compute-comparisons pipeline: implied temp vs NWS gap computed (0.18°F agree)
+- Extracted pipeline logic into src/lib/pipeline/ for reuse by cron routes
+- Created three cron API routes with CRON_SECRET auth
+- Created vercel.json with free-plan daily schedules
+- Connected dashboard to database (fast path) with live API fallback
+
 ## Database Schema
 
 ### market_snapshots
