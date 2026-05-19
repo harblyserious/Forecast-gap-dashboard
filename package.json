@@ -9,7 +9,8 @@
     "lint": "eslint",
     "script": "tsx --env-file=.env.local",
     "test:apis": "tsx --env-file=.env.local scripts/test-all-apis.ts",
-    "test:db": "tsx --env-file=.env.local scripts/test-supabase.ts"
+    "test:db": "tsx --env-file=.env.local scripts/test-supabase.ts",
+    "fetch:markets": "tsx --env-file=.env.local scripts/pipeline/fetch-markets.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.0",

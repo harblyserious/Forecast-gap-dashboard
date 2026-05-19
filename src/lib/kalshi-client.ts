@@ -30,6 +30,12 @@ export interface KalshiMarket {
   closeTime: string;
   expirationTime: string;
   subtitle: string;
+  /** 'greater', 'less', or 'between' */
+  strikeType: string | null;
+  /** Lower temperature bound (the primary threshold). */
+  floorStrike: number | null;
+  /** Upper bound for 'between' markets, null otherwise. */
+  capStrike: number | null;
 }
 
 interface SeriesApiResponse {
@@ -57,6 +63,9 @@ interface MarketsApiResponse {
     close_time: string;
     expiration_time: string;
     subtitle: string;
+    strike_type: string | null;
+    floor_strike: number | null;
+    cap_strike: number | null;
   }>;
   cursor: string;
 }
@@ -76,6 +85,9 @@ function mapMarket(m: MarketsApiResponse["markets"][number]): KalshiMarket {
     closeTime: m.close_time,
     expirationTime: m.expiration_time,
     subtitle: m.subtitle,
+    strikeType: m.strike_type ?? null,
+    floorStrike: m.floor_strike ?? null,
+    capStrike: m.cap_strike ?? null,
   };
 }
 
