@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runFetchForecasts } from "@/lib/pipeline/fetch-forecasts";
+import { logPipelineRun } from "@/lib/database";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +15,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const startedAt = Date.now();
+
   try {
-    const result = await runFetchForecasts();
-    return NextResponse.json({ success: true, inserted: result.inserted, skipped: result.skipped });
+    const result      = await runFetchForecasts();
+    const duration_ms = Date.now() - startedAt;
+
+    await logPipelineRun({
+      job_name:      "fetch-forecasts",
+      status:        "success",
+      rows_inserted: result.inserted,
+      duration_ms,
+    });
+
+    return NextResponse.json({ success: true, inserted: result.inserted, skipped: result.skipped, duration_ms });
   } catch (err) {
-    return NextResponse.json({ success: false, error: (err as Error).message });
+    const duration_ms = Date.now() - startedAt;
+    const error = (err as Error).message;
+    await logPipelineRun({ job_name: "fetch-forecasts", status: "failed", error_message: error, duration_ms });
+    return NextResponse.json({ success: false, error });
   }
 }

@@ -116,3 +116,21 @@ CREATE TABLE IF NOT EXISTS accuracy_scores (
 CREATE INDEX IF NOT EXISTS idx_accuracy_scores_city            ON accuracy_scores (city);
 CREATE INDEX IF NOT EXISTS idx_accuracy_scores_resolution_date ON accuracy_scores (resolution_date);
 CREATE INDEX IF NOT EXISTS idx_accuracy_scores_horizon_hours   ON accuracy_scores (horizon_hours);
+
+
+-- ─── pipeline_logs ────────────────────────────────────────────────────────────
+-- One row per cron job run. Used to monitor pipeline health and diagnose failures.
+
+CREATE TABLE IF NOT EXISTS pipeline_logs (
+  id            uuid        PRIMARY KEY DEFAULT uuid_generate_v4(),
+  job_name      text        NOT NULL,   -- 'fetch-markets', 'fetch-forecasts', 'compute-comparisons'
+  status        text        NOT NULL,   -- 'success', 'partial', 'failed'
+  rows_inserted integer,
+  error_message text,
+  duration_ms   integer,
+  run_at        timestamptz NOT NULL DEFAULT now(),
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pipeline_logs_job_name ON pipeline_logs (job_name);
+CREATE INDEX IF NOT EXISTS idx_pipeline_logs_run_at   ON pipeline_logs (run_at);

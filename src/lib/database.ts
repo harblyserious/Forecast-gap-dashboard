@@ -90,6 +90,31 @@ export async function insertComparison(data: InsertComparison): Promise<Comparis
   return row as Comparison;
 }
 
+// ─── Pipeline logging ─────────────────────────────────────────────────────────
+
+export type PipelineStatus = "success" | "partial" | "failed";
+
+export async function logPipelineRun(entry: {
+  job_name:      string;
+  status:        PipelineStatus;
+  rows_inserted?: number;
+  error_message?: string;
+  duration_ms?:   number;
+}): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from("pipeline_logs")
+    .insert({
+      job_name:      entry.job_name,
+      status:        entry.status,
+      rows_inserted: entry.rows_inserted ?? null,
+      error_message: entry.error_message ?? null,
+      duration_ms:   entry.duration_ms   ?? null,
+    });
+
+  // Log failures silently — a broken log writer should never crash the pipeline.
+  if (error) console.error(`logPipelineRun failed: ${error.message}`);
+}
+
 // ─── Read operations ──────────────────────────────────────────────────────────
 
 // Returns the most recently fetched comparison for a given city and date.
