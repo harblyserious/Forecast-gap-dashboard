@@ -23,7 +23,9 @@ async function checkTable(
   if (latestResult.error) throw new Error(`${table} latest failed: ${JSON.stringify(latestResult.error)}`);
 
   const count     = countResult.count ?? 0;
-  const latestAt  = latestResult.data ? (latestResult.data as Record<string, string>)[timestampCol] : null;
+  const latestAt  = latestResult.data
+    ? (latestResult.data as unknown as Record<string, string>)[timestampCol] ?? null
+    : null;
   const ageMinutes = latestAt
     ? (Date.now() - new Date(latestAt).getTime()) / 60_000
     : null;
