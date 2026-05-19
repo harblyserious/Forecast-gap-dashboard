@@ -304,6 +304,21 @@ Fields:
 - fetched_at: timestamptz — when this snapshot was taken
 - created_at: timestamptz — auto-set
 
+### market_snapshots field gotcha: "less" markets
+For strike_type = 'less' (lower tail bucket), the meaningful temperature
+value is cap_strike, not threshold. Threshold will be 0 for these markets.
+Example: "will it be below 77°F" → threshold=0, cap_strike=77.
+
+The matching engine (compute-comparisons) must handle this:
+- 'greater' markets: use threshold as the lower bound
+- 'less' markets: use cap_strike as the upper bound
+- 'between' markets: use threshold as lower, cap_strike as upper
+
+Midpoint calculation:
+- 'greater': threshold + 3 (open upper tail assumption)
+- 'less': cap_strike - 3 (open lower tail assumption)
+- 'between': (threshold + cap_strike) / 2
+
 ### forecasts
 Stores NWS forecast data for a city and date at the time of fetch.
 One row per city per forecast_date per fetch cycle. Never updated — only inserted.
