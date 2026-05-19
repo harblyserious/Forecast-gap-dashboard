@@ -13,7 +13,8 @@
     "fetch:markets": "tsx --env-file=.env.local scripts/pipeline/fetch-markets.ts",
     "fetch:forecasts": "tsx --env-file=.env.local scripts/pipeline/fetch-forecasts.ts",
     "compute:comparisons": "tsx --env-file=.env.local scripts/pipeline/compute-comparisons.ts",
-    "check:pipeline": "tsx --env-file=.env.local scripts/check-pipeline-health.ts"
+    "check:pipeline": "tsx --env-file=.env.local scripts/check-pipeline-health.ts",
+    "export:data": "tsx --env-file=.env.local scripts/export-data.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.0",
