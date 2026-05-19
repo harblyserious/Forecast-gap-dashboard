@@ -282,6 +282,19 @@ Three angles:
 - Reinstalled and verified all tools (Node.js, Git, VS Code)
 - Ready to begin Phase 2
 
+## Pipeline Design Notes
+
+### Date range handling
+The pipeline is agnostic to how many days ahead each source covers.
+fetch-forecasts should not hardcode a fixed number of days. Instead:
+1. fetch-markets runs first and pulls all open Kalshi/Polymarket markets
+2. fetch-forecasts reads the distinct resolution_dates from the most recent
+   market_snapshots and fetches NWS forecasts for exactly those dates
+3. compute-comparisons joins them on city + date
+
+This keeps sources in sync automatically regardless of how far ahead
+Kalshi opens contracts or how far NWS forecasts extend.
+
 ## UI Improvements Backlog
 
 - Filter out Kalshi markets where probability is 99%+ or 1% or less (not interesting, clutters view)
