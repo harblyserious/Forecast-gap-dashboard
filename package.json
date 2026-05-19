@@ -11,7 +11,8 @@
     "test:apis": "tsx --env-file=.env.local scripts/test-all-apis.ts",
     "test:db": "tsx --env-file=.env.local scripts/test-supabase.ts",
     "fetch:markets": "tsx --env-file=.env.local scripts/pipeline/fetch-markets.ts",
-    "fetch:forecasts": "tsx --env-file=.env.local scripts/pipeline/fetch-forecasts.ts"
+    "fetch:forecasts": "tsx --env-file=.env.local scripts/pipeline/fetch-forecasts.ts",
+    "compute:comparisons": "tsx --env-file=.env.local scripts/pipeline/compute-comparisons.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.0",
