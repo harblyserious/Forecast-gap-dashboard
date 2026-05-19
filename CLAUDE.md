@@ -282,6 +282,85 @@ Three angles:
 - Reinstalled and verified all tools (Node.js, Git, VS Code)
 - Ready to begin Phase 2
 
+## Database Schema
+
+### market_snapshots
+Stores a snapshot of each prediction market every time the pipeline fetches.
+One row per market per fetch cycle. Never updated — only inserted.
+
+Fields:
+- id: uuid, primary key, auto-generated
+- source: text — 'kalshi' or 'polymarket'
+- series_ticker: text — e.g. 'KXHIGHNY'
+- event_ticker: text — e.g. 'KXHIGHNY-26MAY19'
+- market_ticker: text — e.g. 'KXHIGHNY-26MAY19-T95'
+- resolution_date: date — the date this market resolves
+- city: text — e.g. 'nyc'
+- threshold: numeric — the temperature threshold (e.g. 95)
+- strike_type: text — 'greater', 'less', or 'between'
+- cap_strike: numeric — upper bound for 'between' markets, null otherwise
+- yes_bid: numeric — current implied probability (0 to 1)
+- volume: numeric — trading volume (used to filter thin markets)
+- fetched_at: timestamptz — when this snapshot was taken
+- created_at: timestamptz — auto-set
+
+### forecasts
+Stores NWS forecast data for a city and date at the time of fetch.
+One row per city per forecast_date per fetch cycle. Never updated — only inserted.
+
+Fields:
+- id: uuid, primary key, auto-generated
+- city: text — e.g. 'nyc'
+- forecast_date: date — the date being forecast
+- max_temp_24h: numeric — TRUE 24hr high across all hourly periods (PRIMARY comparison field vs Kalshi)
+- daytime_high: numeric — highest temp 6am-8pm (context only)
+- low_temp: numeric — overnight low
+- precip_prob: numeric — probability of precipitation (%)
+- short_forecast: text — e.g. 'Mostly Sunny'
+- source: text — 'nws'
+- fetched_at: timestamptz
+- created_at: timestamptz
+
+### comparisons
+Derived table — output of the matching engine. Links a market snapshot
+to a forecast and stores the computed gap. This is what the dashboard reads.
+Never recomputed in place — re-run compute-comparisons to regenerate.
+
+Fields:
+- id: uuid, primary key, auto-generated
+- market_snapshot_id: uuid, foreign key to market_snapshots(id)
+- forecast_id: uuid, foreign key to forecasts(id)
+- city: text
+- comparison_date: date
+- source: text — 'kalshi' or 'polymarket'
+- series_ticker: text
+- implied_temp: numeric — weighted average from market bucket probabilities
+- nws_temp: numeric — max_temp_24h from forecast row
+- gap: numeric — implied_temp minus nws_temp (positive = market warmer)
+- gap_direction: text — 'market_warmer', 'nws_warmer', or 'agree' (<1F gap)
+- fetched_at: timestamptz
+- created_at: timestamptz
+
+### accuracy_scores
+Filled in after events resolve. Records actual observed temperature and
+scores who was closer — market or NWS. Gets richer over time.
+
+Fields:
+- id: uuid, primary key, auto-generated
+- comparison_id: uuid, foreign key to comparisons(id)
+- city: text
+- resolution_date: date
+- actual_temp: numeric — observed temperature (ground truth)
+- actual_source: text — 'nws_climatological' (for Kalshi) or 'weather_underground_klga' (for Polymarket)
+- market_implied_temp: numeric — copied from comparison row
+- nws_forecast_temp: numeric — copied from comparison row
+- market_error: numeric — abs(actual_temp - market_implied_temp)
+- nws_error: numeric — abs(actual_temp - nws_forecast_temp)
+- winner: text — 'market', 'nws', or 'tie'
+- horizon_hours: integer — 24 for MVP; future support for 48, 12, 6, null for time-weighted
+- scored_at: timestamptz
+- created_at: timestamptz
+
 ## Accuracy Scoring Methodology
 
 **Core principle:** Score markets at a fixed time horizon before close,
