@@ -7,8 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "script": "tsx",
-    "test:apis": "tsx scripts/test-all-apis.ts"
+    "script": "tsx --env-file=.env.local",
+    "test:apis": "tsx --env-file=.env.local scripts/test-all-apis.ts",
+    "test:db": "tsx --env-file=.env.local scripts/test-supabase.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.0",
