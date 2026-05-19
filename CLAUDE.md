@@ -282,6 +282,32 @@ Three angles:
 - Reinstalled and verified all tools (Node.js, Git, VS Code)
 - Ready to begin Phase 2
 
+## Accuracy Scoring Methodology
+
+**Core principle:** Score markets at a fixed time horizon before close,
+not at close. Markets converge to the correct answer as close approaches
+so scoring at close is meaningless.
+
+**MVP methodology:** Use the market snapshot closest to 24 hours before
+the market's close_time. This represents a genuine prediction made with
+real uncertainty remaining.
+
+**Future horizons:** The architecture supports adding 48hr, 24hr, 12hr,
+and 6hr scoring in the future, plus a time-weighted average across all
+snapshots. No schema changes needed — all raw snapshots are stored in
+market_snapshots with fetched_at timestamps.
+
+**Schema note:** accuracy_scores includes a horizon_hours field (integer)
+to distinguish between scoring methodologies:
+- 24 = MVP default (snapshot closest to 24hrs before close)
+- 48, 12, 6 = future horizons
+- null = time-weighted average (future)
+
+**Resolution sources:**
+- Kalshi: score against NWS Climatological (Central Park)
+- Polymarket: score against Weather Underground KLGA (LaGuardia)
+Track which source was used in the actual_source field.
+
 ## Pipeline Design Notes
 
 ### Date range handling
