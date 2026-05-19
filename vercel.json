@@ -1,18 +1,14 @@
 {
-  "_note": "Free plan schedules. Upgrade to Pro before public launch for hourly runs — see CLAUDE.md Pipeline Design Notes.",
   "crons": [
     {
-      "_note": "Fetch open Kalshi + Polymarket markets — 6am UTC daily",
       "path": "/api/cron/fetch-markets",
       "schedule": "0 6 * * *"
     },
     {
-      "_note": "Fetch NWS forecasts — 6:30am UTC daily, after fetch-markets has populated market_snapshots",
       "path": "/api/cron/fetch-forecasts",
       "schedule": "30 6 * * *"
     },
     {
-      "_note": "Compute implied temp vs NWS gap — 7am UTC daily, after both fetches complete",
       "path": "/api/cron/compute-comparisons",
       "schedule": "0 7 * * *"
     }
