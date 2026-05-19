@@ -415,6 +415,19 @@ fetch-forecasts should not hardcode a fixed number of days. Instead:
 This keeps sources in sync automatically regardless of how far ahead
 Kalshi opens contracts or how far NWS forecasts extend.
 
+### Cron Schedule (Current vs Target)
+Current (free Vercel plan): once daily
+- fetch-markets: 6am UTC
+- fetch-forecasts: 6:30am UTC
+- compute-comparisons: 7am UTC
+
+Target (Vercel Pro, before public launch):
+- fetch-markets: every hour (0 * * * *)
+- fetch-forecasts: twice daily 6am + 6pm UTC (0 6,18 * * *)
+- compute-comparisons: 10 minutes after fetch-markets (10 * * * *)
+
+Upgrade to Vercel Pro when moving to Phase 3 public launch.
+
 ## UI Improvements Backlog
 
 - Filter out Kalshi markets where probability is 99%+ or 1% or less (not interesting, clutters view)
