@@ -146,10 +146,16 @@ historical accuracy.
 - Resolves via **Weather Underground (KLGA)** — Kalshi resolves via **Central Park**, may differ by a few degrees
 
 ## Current Status
-- Phase: Phase 0 — Foundations
-- Last completed: Project scaffolded and deployed to Vercel
-- Currently working on: Learning fundamentals
-- Next milestone: Phase 1 — Fetch data from all 3 APIs
+- Phase: Phase 2 complete — moving to Phase 3
+- Last completed: Full data pipeline built, tested, deployed, and logging on Vercel
+- Next milestone: Phase 3 — Frontend UI redesign
+
+### Phase 3 TODO
+- Build polished dashboard with distribution charts
+- Kalshi vs NWS and Polymarket vs NWS panels side by side
+- Historical accuracy tracking
+- City filtering
+- Upgrade Vercel to Pro for hourly crons before launch
 
 ## Matching Logic
 
@@ -282,16 +288,20 @@ Three angles:
 - Reinstalled and verified all tools (Node.js, Git, VS Code)
 - Ready to begin Phase 2
 
-### 2026-05-19 (Days 39–42)
-- Set up Supabase project, created all four tables via create-schema.sql
+### 2026-05-19 (Days 39–42) — Phase 2 complete
+- Set up Supabase project, created all 5 tables (market_snapshots, forecasts, comparisons, accuracy_scores, pipeline_logs)
 - Built and verified database.ts (typed insert/read functions)
 - Built fetch-markets pipeline: 12 Kalshi KXHIGHNY snapshots inserted
 - Built fetch-forecasts pipeline: NWS hourly 24hr max computed and inserted
 - Built compute-comparisons pipeline: implied temp vs NWS gap computed (0.18°F agree)
 - Extracted pipeline logic into src/lib/pipeline/ for reuse by cron routes
 - Created three cron API routes with CRON_SECRET auth
-- Created vercel.json with free-plan daily schedules
+- Created vercel.json with free-plan daily schedules (upgrade to Pro for hourly)
+- Added pipeline_logs table and logging to all cron routes
+- Created data backup export script (scripts/export-data.ts)
+- Created pipeline health check script (scripts/check-pipeline-health.ts)
 - Connected dashboard to database (fast path) with live API fallback
+- All deployed and green on Vercel — Phase 2 complete
 
 ## Database Schema
 
