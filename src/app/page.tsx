@@ -4,7 +4,22 @@ import { useEffect, useState } from "react";
 import type { ForecastPeriod } from "@/lib/noaa-client";
 import type { KalshiMarket } from "@/lib/kalshi-client";
 
-interface WeatherComparison {
+// Database path — returned when the pipeline has run recently
+interface DatabaseResponse {
+  source: "database";
+  city: string;
+  comparisonDate: string;
+  impliedTemp: number;
+  nwsTemp: number;
+  gap: number;
+  gapDirection: "market_warmer" | "nws_warmer" | "agree";
+  seriesTicker: string;
+  fetchedAt: string;
+}
+
+// Live path — returned when database is empty/stale (Phase 1 fallback)
+interface LiveResponse {
+  source: "live";
   city: string;
   forecastDate: string;
   noaaForecast: { periods: ForecastPeriod[] } | null;
@@ -16,7 +31,9 @@ interface WeatherComparison {
   errors?: Record<string, string>;
 }
 
-function getImpliedTemp(markets: KalshiMarket[]): number | null {
+type ApiResponse = DatabaseResponse | LiveResponse;
+
+function getImpliedTempFromMarkets(markets: KalshiMarket[]): number | null {
   if (markets.length === 0) return null;
 
   const buckets = markets.map((m) => {
@@ -48,7 +65,7 @@ function getImpliedTemp(markets: KalshiMarket[]): number | null {
 }
 
 export default function Home() {
-  const [data, setData] = useState<WeatherComparison | null>(null);
+  const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -59,9 +76,19 @@ export default function Home() {
       .catch((err) => { setFetchError(err.message); setLoading(false); });
   }, []);
 
-  const noaaTemp = data?.noaaHighTemp ?? null;
-  const impliedTemp = data ? getImpliedTemp(data.kalshiMarkets) : null;
-  const gap = noaaTemp !== null && impliedTemp !== null ? impliedTemp - noaaTemp : null;
+  // Normalise both response shapes into the same display values
+  const noaaTemp    = data?.source === "database" ? data.nwsTemp
+                    : data?.source === "live"     ? data.noaaHighTemp
+                    : null;
+  const impliedTemp = data?.source === "database" ? data.impliedTemp
+                    : data?.source === "live"     ? getImpliedTempFromMarkets(data.kalshiMarkets)
+                    : null;
+  const gap         = data?.source === "database" ? data.gap
+                    : noaaTemp !== null && impliedTemp !== null ? impliedTemp - noaaTemp
+                    : null;
+  const displayDate = data?.source === "database" ? data.comparisonDate
+                    : data?.source === "live"     ? data.kalshiMarketDate
+                    : null;
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -80,7 +107,7 @@ export default function Home() {
         </p>
       )}
 
-      {data?.errors && (
+      {data?.source === "live" && data.errors && (
         <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded px-4 py-3 text-sm text-yellow-800">
           {Object.entries(data.errors).map(([src, msg]) => (
             <p key={src}><span className="font-semibold">{src}:</span> {msg}</p>
@@ -99,7 +126,8 @@ export default function Home() {
                 {noaaTemp !== null ? `${noaaTemp}°F` : "—"}
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                {data.noaaHighTempType ?? "—"}{data.kalshiMarketDate ? ` · ${data.kalshiMarketDate}` : ""}
+                {data.source === "live" ? (data.noaaHighTempType ?? "—") : "24hr max"}
+                {displayDate ? ` · ${displayDate}` : ""}
               </p>
             </div>
             <div className="text-center">
@@ -108,7 +136,7 @@ export default function Home() {
                 {impliedTemp !== null ? `${impliedTemp.toFixed(1)}°F` : "—"}
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                {data.kalshiMarketDate ?? "—"}
+                {displayDate ?? "—"}
               </p>
             </div>
             <div className="text-center">
@@ -123,69 +151,72 @@ export default function Home() {
               )}
             </div>
             <div className="ml-auto text-right text-xs text-gray-400">
-              <p>{data.forecastDate}</p>
+              <p>{displayDate}</p>
               <p>fetched {new Date(data.fetchedAt).toLocaleTimeString()}</p>
+              <p className="mt-1 text-gray-300">{data.source}</p>
             </div>
           </div>
 
-          {/* NOAA forecast */}
-          <div className="bg-white rounded-lg border p-4">
-            <h2 className="font-semibold text-gray-700 mb-1">NWS Forecast</h2>
-            <p className="text-xs text-gray-400 mb-3">24hr max for: <span className="font-medium">{data.kalshiMarketDate ?? "—"}</span></p>
-            {data.noaaForecast ? (() => {
-              // Show hourly periods for the Kalshi resolution date only, every 3 hours to keep display concise
-              const dayPeriods = data.kalshiMarketDate
-                ? data.noaaForecast.periods.filter((p: ForecastPeriod) =>
-                    new Date(p.startTime).toLocaleDateString("en-CA", { timeZone: "America/New_York" }) === data.kalshiMarketDate
-                  ).filter((_: ForecastPeriod, i: number) => i % 3 === 0)
-                : data.noaaForecast.periods.slice(0, 8);
-              return (
-                <ul className="space-y-2">
-                  {dayPeriods.map((p: ForecastPeriod) => (
-                    <li key={p.number} className="flex justify-between text-sm">
-                      <span className="text-gray-600 w-20 shrink-0">
-                        {new Date(p.startTime).toLocaleTimeString("en-US", { hour: "numeric", hour12: true, timeZone: "America/New_York" })}
-                      </span>
-                      <span className="font-medium">{p.temperature}°{p.temperatureUnit}</span>
-                      <span className="text-gray-400 text-right truncate ml-2 max-w-36">{p.shortForecast}</span>
-                    </li>
-                  ))}
-                </ul>
-              );
-            })() : (
-              <p className="text-sm text-gray-400">Unavailable</p>
-            )}
-          </div>
+          {/* Detail panels — only available on the live path; hidden for database responses */}
+          {data.source === "live" && (<>
+            {/* NOAA forecast */}
+            <div className="bg-white rounded-lg border p-4">
+              <h2 className="font-semibold text-gray-700 mb-1">NWS Forecast</h2>
+              <p className="text-xs text-gray-400 mb-3">24hr max for: <span className="font-medium">{displayDate ?? "—"}</span></p>
+              {data.noaaForecast ? (() => {
+                const dayPeriods = data.kalshiMarketDate
+                  ? data.noaaForecast!.periods.filter((p: ForecastPeriod) =>
+                      new Date(p.startTime).toLocaleDateString("en-CA", { timeZone: "America/New_York" }) === data.kalshiMarketDate
+                    ).filter((_: ForecastPeriod, i: number) => i % 3 === 0)
+                  : data.noaaForecast!.periods.slice(0, 8);
+                return (
+                  <ul className="space-y-2">
+                    {dayPeriods.map((p: ForecastPeriod) => (
+                      <li key={p.number} className="flex justify-between text-sm">
+                        <span className="text-gray-600 w-20 shrink-0">
+                          {new Date(p.startTime).toLocaleTimeString("en-US", { hour: "numeric", hour12: true, timeZone: "America/New_York" })}
+                        </span>
+                        <span className="font-medium">{p.temperature}°{p.temperatureUnit}</span>
+                        <span className="text-gray-400 text-right truncate ml-2 max-w-36">{p.shortForecast}</span>
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })() : (
+                <p className="text-sm text-gray-400">Unavailable</p>
+              )}
+            </div>
 
-          {/* Kalshi markets */}
-          <div className="md:col-span-2 bg-white rounded-lg border p-4">
-            <h2 className="font-semibold text-gray-700 mb-1">Kalshi Markets — KXHIGHNY</h2>
-            <p className="text-xs text-gray-400 mb-3">Resolving for: <span className="font-medium">{data.kalshiMarketDate ?? "—"}</span></p>
-            {data.kalshiMarkets.length > 0 ? (
-              <div className="space-y-2">
-                {data.kalshiMarkets.map((m) => {
-                  const bid = m.yesBidDollars;
-                  const ask = m.yesAskDollars;
-                  const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : bid || ask;
-                  const pct = Math.round(mid * 100);
-                  return (
-                    <div key={m.ticker} className="flex items-center gap-3 text-sm">
-                      <span className="text-gray-600 w-44 shrink-0 truncate">{m.subtitle || m.title}</span>
-                      <div className="flex-1 bg-gray-100 rounded-full h-2">
-                        <div
-                          className="bg-purple-400 h-2 rounded-full"
-                          style={{ width: `${Math.min(pct, 100)}%` }}
-                        />
+            {/* Kalshi markets */}
+            <div className="md:col-span-2 bg-white rounded-lg border p-4">
+              <h2 className="font-semibold text-gray-700 mb-1">Kalshi Markets — KXHIGHNY</h2>
+              <p className="text-xs text-gray-400 mb-3">Resolving for: <span className="font-medium">{displayDate ?? "—"}</span></p>
+              {data.kalshiMarkets.length > 0 ? (
+                <div className="space-y-2">
+                  {data.kalshiMarkets.map((m) => {
+                    const bid = m.yesBidDollars;
+                    const ask = m.yesAskDollars;
+                    const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : bid || ask;
+                    const pct = Math.round(mid * 100);
+                    return (
+                      <div key={m.ticker} className="flex items-center gap-3 text-sm">
+                        <span className="text-gray-600 w-44 shrink-0 truncate">{m.subtitle || m.title}</span>
+                        <div className="flex-1 bg-gray-100 rounded-full h-2">
+                          <div
+                            className="bg-purple-400 h-2 rounded-full"
+                            style={{ width: `${Math.min(pct, 100)}%` }}
+                          />
+                        </div>
+                        <span className="w-10 text-right font-medium text-gray-700">{pct}%</span>
                       </div>
-                      <span className="w-10 text-right font-medium text-gray-700">{pct}%</span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-400">Unavailable</p>
-            )}
-          </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400">Unavailable</p>
+              )}
+            </div>
+          </>)}
 
         </div>
       )}
