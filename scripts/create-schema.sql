@@ -134,3 +134,19 @@ CREATE TABLE IF NOT EXISTS pipeline_logs (
 
 CREATE INDEX IF NOT EXISTS idx_pipeline_logs_job_name ON pipeline_logs (job_name);
 CREATE INDEX IF NOT EXISTS idx_pipeline_logs_run_at   ON pipeline_logs (run_at);
+
+
+-- ─── Row Level Security (enabled May 2026) ───────────────────────────────────
+-- Prevents unauthorized writes while allowing public reads.
+-- Service role key (used by pipeline) bypasses RLS entirely.
+ALTER TABLE market_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE forecasts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE comparisons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE accuracy_scores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pipeline_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "public read" ON market_snapshots FOR SELECT USING (true);
+CREATE POLICY "public read" ON forecasts FOR SELECT USING (true);
+CREATE POLICY "public read" ON comparisons FOR SELECT USING (true);
+CREATE POLICY "public read" ON accuracy_scores FOR SELECT USING (true);
+CREATE POLICY "public read" ON pipeline_logs FOR SELECT USING (true);
