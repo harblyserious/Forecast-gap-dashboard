@@ -193,13 +193,16 @@ export async function getRecentSnapshotsForSeries(
 }
 
 // Returns the most recent forecast per forecast_date for a city, for dates
-// on or after today. Used by /api/forecasts/current.
+// within the last 2 days and forward. Used by /api/forecasts/current.
 export async function getUpcomingForecasts(city: string, today: string): Promise<Forecast[]> {
+  const yesterday = new Date(today + "T12:00:00Z");
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const since = yesterday.toISOString().slice(0, 10);
   const { data, error } = await supabaseAdmin
     .from("forecasts")
     .select("*")
     .eq("city", city)
-    .gte("forecast_date", today)
+    .gte("forecast_date", since)
     .order("forecast_date", { ascending: true })
     .order("fetched_at",    { ascending: false });
 
@@ -231,13 +234,16 @@ export async function getAccuracyHistory(days: number): Promise<AccuracyScore[]>
 }
 
 // Returns the most recent comparison per comparison_date for a city,
-// for dates on or after today. Used by /api/comparisons/current.
+// within the last 2 days and forward. Used by /api/comparisons/current.
 export async function getUpcomingComparisons(city: string, today: string): Promise<Comparison[]> {
+  const yesterday = new Date(today + "T12:00:00Z");
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const since = yesterday.toISOString().slice(0, 10);
   const { data, error } = await supabaseAdmin
     .from("comparisons")
     .select("*")
     .eq("city", city)
-    .gte("comparison_date", today)
+    .gte("comparison_date", since)
     .order("comparison_date", { ascending: true })
     .order("fetched_at",      { ascending: false });
 
