@@ -171,6 +171,86 @@ export async function logPipelineRun(entry: {
 
 // ─── Read operations ──────────────────────────────────────────────────────────
 
+// Returns all market snapshots fetched in the last 25 hours for a series/city
+// with a resolution_date on or after today. Used by the live-markets fallback.
+export async function getRecentSnapshotsForSeries(
+  seriesTicker: string,
+  city: string,
+  today: string
+): Promise<MarketSnapshot[]> {
+  const since = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabaseAdmin
+    .from("market_snapshots")
+    .select("*")
+    .eq("series_ticker", seriesTicker)
+    .eq("city", city)
+    .gte("resolution_date", today)
+    .gte("fetched_at", since)
+    .order("fetched_at", { ascending: false });
+
+  if (error) throw new Error(`getRecentSnapshotsForSeries: ${error.message}`);
+  return (data ?? []) as MarketSnapshot[];
+}
+
+// Returns the most recent forecast per forecast_date for a city, for dates
+// on or after today. Used by /api/forecasts/current.
+export async function getUpcomingForecasts(city: string, today: string): Promise<Forecast[]> {
+  const { data, error } = await supabaseAdmin
+    .from("forecasts")
+    .select("*")
+    .eq("city", city)
+    .gte("forecast_date", today)
+    .order("forecast_date", { ascending: true })
+    .order("fetched_at",    { ascending: false });
+
+  if (error) throw new Error(`getUpcomingForecasts: ${error.message}`);
+
+  // Keep latest fetched_at per forecast_date
+  const seen = new Map<string, Forecast>();
+  for (const row of (data ?? []) as Forecast[]) {
+    if (!seen.has(row.forecast_date)) seen.set(row.forecast_date, row);
+  }
+  return [...seen.values()];
+}
+
+// Returns accuracy_scores for the last N days, ordered newest-first.
+// Used by /api/accuracy.
+export async function getAccuracyHistory(days: number): Promise<AccuracyScore[]> {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const sinceDate = since.toISOString().slice(0, 10);
+
+  const { data, error } = await supabaseAdmin
+    .from("accuracy_scores")
+    .select("*")
+    .gte("resolution_date", sinceDate)
+    .order("resolution_date", { ascending: false });
+
+  if (error) throw new Error(`getAccuracyHistory: ${error.message}`);
+  return (data ?? []) as AccuracyScore[];
+}
+
+// Returns the most recent comparison per comparison_date for a city,
+// for dates on or after today. Used by /api/comparisons/current.
+export async function getUpcomingComparisons(city: string, today: string): Promise<Comparison[]> {
+  const { data, error } = await supabaseAdmin
+    .from("comparisons")
+    .select("*")
+    .eq("city", city)
+    .gte("comparison_date", today)
+    .order("comparison_date", { ascending: true })
+    .order("fetched_at",      { ascending: false });
+
+  if (error) throw new Error(`getUpcomingComparisons: ${error.message}`);
+
+  // Keep latest fetched_at per comparison_date
+  const seen = new Map<string, Comparison>();
+  for (const row of (data ?? []) as Comparison[]) {
+    if (!seen.has(row.comparison_date)) seen.set(row.comparison_date, row);
+  }
+  return [...seen.values()];
+}
+
 // Returns the most recently fetched comparison for a given city and date.
 // Dashboard uses this to display the current gap for today or a specific date.
 export async function getLatestComparison(
