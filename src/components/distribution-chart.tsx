@@ -23,24 +23,17 @@ interface Props {
 
 // ─── Normal distribution helpers ─────────────────────────────────────────────
 
-function erf(x: number): number {
-  const sign = x < 0 ? -1 : 1;
-  const a = Math.abs(x);
-  const t = 1 / (1 + 0.3275911 * a);
-  const y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592)
-      * t * Math.exp(-a * a);
-  return sign * y;
+function normalPdf(x: number, mean: number, sigma: number): number {
+  return (1 / (sigma * Math.sqrt(2 * Math.PI))) * Math.exp(-((x - mean) ** 2) / (2 * sigma ** 2));
 }
 
-function normalCdf(x: number, mean: number, sigma: number): number {
-  return 0.5 * (1 + erf((x - mean) / (sigma * Math.SQRT2)));
-}
-
-function bucketNwsProb(b: Bucket, mean: number, sigma: number): number {
-  const lo = b.strikeType === "less"    ? null : b.threshold;
-  const hi = b.strikeType === "greater" ? null : b.capStrike;
-  return (hi !== null ? normalCdf(hi, mean, sigma) : 1)
-       - (lo !== null ? normalCdf(lo, mean, sigma) : 0);
+// Conservative midpoint for NWS curve evaluation — keeps open tails close to
+// the boundary so they don't distort the bell shape (tail midpoints that are
+// far from the mean would collapse all probability into the tail bucket).
+function nwsMidpoint(b: Bucket): number {
+  if (b.strikeType === "less")    return (b.capStrike ?? 85) - 2;
+  if (b.strikeType === "greater") return b.threshold + 2;
+  return (b.threshold + (b.capStrike ?? b.threshold + 1)) / 2;
 }
 
 // ─── Build chart data ─────────────────────────────────────────────────────────
@@ -52,7 +45,7 @@ function buildChartData(buckets: Bucket[], nwsTemp: number | null): ChartPoint[]
   let nwsNorm: (number | null)[] = sorted.map(() => null);
   if (nwsTemp !== null) {
     const sigma = 3;
-    const raw   = sorted.map((b) => bucketNwsProb(b, nwsTemp, sigma));
+    const raw   = sorted.map((b) => normalPdf(nwsMidpoint(b), nwsTemp, sigma));
     const total = raw.reduce((s, p) => s + p, 0);
     nwsNorm     = total > 0 ? raw.map((p) => Math.round((p / total) * 1000) / 10) : nwsNorm;
   }
