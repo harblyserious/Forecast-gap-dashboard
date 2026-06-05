@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUpcomingForecasts } from "@/lib/database";
+import { getUpcomingForecasts, insertForecast, type Forecast } from "@/lib/database";
+import { getGridPoint, getForecastHourly } from "@/lib/noaa-client";
+import { computeForecastFields } from "@/lib/pipeline/fetch-forecasts";
 
 export const dynamic = "force-dynamic";
+
+const NYC_LAT = 40.7829;
+const NYC_LON = -73.9654;
+
+function addDays(dateStr: string, n: number): string {
+  const d = new Date(dateStr + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
 
 export async function GET(request: NextRequest) {
   const city  = (request.nextUrl.searchParams.get("city") ?? "nyc").toLowerCase();
@@ -9,6 +20,43 @@ export async function GET(request: NextRequest) {
 
   try {
     const rows = await getUpcomingForecasts(city, today);
+    const storedDates = new Set(rows.map((r) => r.forecast_date));
+
+    // Fetch live NWS data for any upcoming date that isn't in Supabase yet.
+    // This covers dates whose Kalshi markets opened after the daily cron ran.
+    const missing = [today, addDays(today, 1), addDays(today, 2)]
+      .filter((d) => !storedDates.has(d));
+
+    if (missing.length > 0) {
+      try {
+        const fetchedAt = new Date().toISOString();
+        const grid      = await getGridPoint(NYC_LAT, NYC_LON);
+        const nws       = await getForecastHourly(grid.forecastHourlyUrl);
+
+        for (const date of missing) {
+          const fields = computeForecastFields(nws.periods, date);
+          if (!fields) continue;
+
+          const inserted: Forecast = await insertForecast({
+            city,
+            forecast_date:  date,
+            max_temp_24h:   fields.max_temp_24h,
+            daytime_high:   fields.daytime_high,
+            low_temp:       fields.low_temp,
+            precip_prob:    fields.precip_prob,
+            short_forecast: fields.short_forecast,
+            source:         "nws",
+            fetched_at:     fetchedAt,
+          });
+          rows.push(inserted);
+        }
+
+        rows.sort((a, b) => a.forecast_date.localeCompare(b.forecast_date));
+      } catch (e) {
+        // NWS is flaky — continue with whatever Supabase had
+        console.error("Live NWS fetch failed:", (e as Error).message);
+      }
+    }
 
     const forecasts = rows.map((r) => ({
       forecastDate:  r.forecast_date,

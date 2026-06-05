@@ -47,15 +47,30 @@ function computeForecastFields(periods: ForecastPeriod[], targetDate: string) {
   return { max_temp_24h, daytime_high, low_temp, precip_prob, short_forecast };
 }
 
-async function getResolutionDates(): Promise<string[]> {
-  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+function addDays(dateStr: string, n: number): string {
+  const d = new Date(dateStr + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+async function getResolutionDates(today: string): Promise<string[]> {
+  // Look back 25h to catch market snapshots from the daily cron regardless of timing skew
+  const since = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabaseAdmin
     .from("market_snapshots")
     .select("resolution_date")
-    .gte("fetched_at", twoHoursAgo);
+    .gte("fetched_at", since);
 
   if (error) throw new Error(`Failed to query market_snapshots: ${error.message}`);
-  return [...new Set((data ?? []).map((r: { resolution_date: string }) => r.resolution_date))].sort();
+  const dates = new Set((data ?? []).map((r: { resolution_date: string }) => r.resolution_date));
+
+  // Always include today + next 2 days so we fetch NWS data for dates whose Kalshi
+  // markets may have opened after the daily cron already ran.
+  dates.add(today);
+  dates.add(addDays(today, 1));
+  dates.add(addDays(today, 2));
+
+  return [...dates].sort();
 }
 
 async function forecastAlreadyExists(date: string): Promise<boolean> {
@@ -73,11 +88,14 @@ async function forecastAlreadyExists(date: string): Promise<boolean> {
   return data !== null;
 }
 
+export { computeForecastFields };
+
 export async function runFetchForecasts(): Promise<FetchForecastsResult> {
   const fetchedAt = new Date().toISOString();
+  const today  = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   const result: FetchForecastsResult = { inserted: 0, skipped: 0 };
 
-  const dates = await getResolutionDates();
+  const dates = await getResolutionDates(today);
   if (dates.length === 0) return result;
 
   const grid     = await getGridPoint(NYC_LAT, NYC_LON);
