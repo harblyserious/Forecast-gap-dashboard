@@ -51,9 +51,27 @@ export type Comparison = {
 
 // ─── Insert types (omit server-generated fields) ──────────────────────────────
 
+export type AccuracyScore = {
+  id: string;
+  comparison_id: string;
+  city: string;
+  resolution_date: string;
+  actual_temp: number;
+  actual_source: string;
+  market_implied_temp: number;
+  nws_forecast_temp: number;
+  market_error: number;
+  nws_error: number;
+  winner: "market" | "nws" | "tie";
+  horizon_hours: number | null;
+  scored_at: string;
+  created_at: string;
+};
+
 export type InsertMarketSnapshot = Omit<MarketSnapshot, "id" | "created_at">;
 export type InsertForecast       = Omit<Forecast,        "id" | "created_at">;
 export type InsertComparison     = Omit<Comparison,      "id" | "created_at">;
+export type InsertAccuracyScore  = Omit<AccuracyScore,   "id" | "created_at">;
 
 // ─── Write operations ─────────────────────────────────────────────────────────
 
@@ -88,6 +106,42 @@ export async function insertComparison(data: InsertComparison): Promise<Comparis
 
   if (error) throw new Error(`insertComparison: ${error.message}`);
   return row as Comparison;
+}
+
+export async function insertAccuracyScore(data: InsertAccuracyScore): Promise<AccuracyScore> {
+  const { data: row, error } = await supabaseAdmin
+    .from("accuracy_scores")
+    .insert(data)
+    .select()
+    .single();
+
+  if (error) throw new Error(`insertAccuracyScore: ${error.message}`);
+  return row as AccuracyScore;
+}
+
+// Returns comparison_ids that already have an accuracy_score row.
+export async function getScoredComparisonIds(ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const { data, error } = await supabaseAdmin
+    .from("accuracy_scores")
+    .select("comparison_id")
+    .in("comparison_id", ids);
+
+  if (error) throw new Error(`getScoredComparisonIds: ${error.message}`);
+  return new Set((data ?? []).map((r: { comparison_id: string }) => r.comparison_id));
+}
+
+// Returns all comparisons with comparison_date strictly before today.
+export async function getResolvedComparisons(today: string): Promise<Comparison[]> {
+  const { data, error } = await supabaseAdmin
+    .from("comparisons")
+    .select("*")
+    .lt("comparison_date", today)
+    .order("comparison_date", { ascending: true })
+    .order("fetched_at",      { ascending: true });
+
+  if (error) throw new Error(`getResolvedComparisons: ${error.message}`);
+  return (data ?? []) as Comparison[];
 }
 
 // ─── Pipeline logging ─────────────────────────────────────────────────────────
