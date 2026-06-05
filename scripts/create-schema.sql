@@ -150,3 +150,12 @@ CREATE POLICY "public read" ON forecasts FOR SELECT USING (true);
 CREATE POLICY "public read" ON comparisons FOR SELECT USING (true);
 CREATE POLICY "public read" ON accuracy_scores FOR SELECT USING (true);
 CREATE POLICY "public read" ON pipeline_logs FOR SELECT USING (true);
+
+
+-- Required for Supabase Data API access after October 30, 2026
+-- Without these, new tables won't be accessible via PostgREST/supabase-js
+GRANT ALL ON market_snapshots TO anon, authenticated, service_role;
+GRANT ALL ON forecasts TO anon, authenticated, service_role;
+GRANT ALL ON comparisons TO anon, authenticated, service_role;
+GRANT ALL ON accuracy_scores TO anon, authenticated, service_role;
+GRANT ALL ON pipeline_logs TO anon, authenticated, service_role;
