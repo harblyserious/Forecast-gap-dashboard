@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/compute-comparisons",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/score-accuracy",
+      "schedule": "0 8 * * *"
     }
   ]
 }

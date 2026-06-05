@@ -157,9 +157,8 @@ historical accuracy.
 
 ## Current Status
 - Phase 3 detailed plan: see PHASE_3_PLAN.md in project root
-- Phase: Phase 3A — Accuracy Scoring Pipeline
-- Last completed: Phase 2 — Full data pipeline running on Vercel, all crons green
-- Currently working on: Building accuracy scoring pipeline (actual temp fetcher + scoring script)
+- Phase: Phase 3B — Dashboard Frontend
+- Last completed: Phase 3A — Accuracy scoring pipeline complete, backfill run, cron deployed
 - Next milestone: Phase 3B — Dashboard frontend with real-time Kalshi odds
 
 ### Phase 3 TODO
@@ -323,6 +322,12 @@ Three angles:
 - Confirmed pipeline health: all crons firing, all tables have fresh data as of today
 - Scoped Polymarket out of Phase 3 (Kalshi-only for MVP, Polymarket in Phase 4)
 - Key architecture decision: real-time Kalshi fetch on page load with Supabase fallback, NWS from Supabase only
+- Phase 3A complete:
+  - Validated KNYC hourly obs vs CLI report — obs endpoint misses intra-hour peaks (1°F low); CLI is the correct source
+  - Built fetch-cli-temp.ts: fetches and parses NWS CLI HTML, handles twice-daily versioning, scans estimated version window
+  - Built score-accuracy.ts: groups comparisons by event, selects 24hr-horizon snapshot, fetches CLI temp (cached per date), inserts accuracy_scores
+  - Backfill: 16/17 dates scored (May 19–June 3); June 4 skipped pending final CLI issuance — Scoreboard: Market 5 | NWS 2 | Tie 9
+  - Cron route deployed at /api/cron/score-accuracy, scheduled 8 AM UTC (after final CLI issues at ~5:30 AM UTC)
 
 ## Database Schema
 
