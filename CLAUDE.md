@@ -54,6 +54,16 @@ historical accuracy.
 - Key NYC series: `KXHIGHNY` (daily high), `KXLOWNY` (daily low), `KXRAINNYC` (daily rain), `KXSNOWNYC` (snow)
 - Sample weather series saved at `scripts/sample-data/kalshi-weather-series.json`
 
+### NWS Observations (Actual Temperature — Kalshi Resolution Source)
+- **Station:** KNYC (Central Park) — the exact station Kalshi uses to resolve KXHIGHNY contracts
+- **Endpoint:** `https://api.weather.gov/stations/KNYC/observations`
+- **Resolution document:** NWS Daily Climate Report (CLI), issued by NWS Upton (KOKX), product URL: `https://forecast.weather.gov/product.php?site=OKX&product=CLI&issuedby=NYC`
+- **Key field:** `maxTemperature` from daily observations
+- **Timing:** Final CLI report issued ~1:30 AM ET the following day, covering midnight-to-midnight ET
+- **Same User-Agent requirement** as all other NWS calls (`ForecastGapDashboard/1.0`)
+- **Use for:** Populating `accuracy_scores.actual_temp` after markets resolve
+- **Validation:** Before building the scoring pipeline, cross-check KNYC observations against the published CLI report for 3–4 dates to confirm they match exactly
+
 ### Polymarket
 - Use `/events?tag_slug=temperature` (NOT `/markets` or `tag_slug=weather`)
 - NYC daily weather series: `seriesSlug` = `"nyc-daily-weather"`
@@ -146,9 +156,10 @@ historical accuracy.
 - Resolves via **Weather Underground (KLGA)** — Kalshi resolves via **Central Park**, may differ by a few degrees
 
 ## Current Status
-- Phase: Phase 2 complete — moving to Phase 3
-- Last completed: Full data pipeline built, tested, deployed, and logging on Vercel
-- Next milestone: Phase 3 — Frontend UI redesign
+- Phase: Phase 3A — Accuracy Scoring Pipeline
+- Last completed: Phase 2 — Full data pipeline running on Vercel, all crons green
+- Currently working on: Building accuracy scoring pipeline (actual temp fetcher + scoring script)
+- Next milestone: Phase 3B — Dashboard frontend with real-time Kalshi odds
 
 ### Phase 3 TODO
 - Build polished dashboard with distribution charts
@@ -302,6 +313,15 @@ Three angles:
 - Created pipeline health check script (scripts/check-pipeline-health.ts)
 - Connected dashboard to database (fast path) with live API fallback
 - All deployed and green on Vercel — Phase 2 complete
+
+### 2026-06-04
+- Phase 3 planning complete
+- Detailed Phase 3 plan saved to PHASE_3_PLAN.md
+- Phase 3 structure: 3A (accuracy scoring pipeline) → 3B (dashboard frontend with real-time Kalshi) → 3C (polish/QA)
+- Confirmed resolution source for Kalshi KXHIGHNY: NWS Daily Climate Report (CLI), Central Park station KNYC
+- Confirmed pipeline health: all crons firing, all tables have fresh data as of today
+- Scoped Polymarket out of Phase 3 (Kalshi-only for MVP, Polymarket in Phase 4)
+- Key architecture decision: real-time Kalshi fetch on page load with Supabase fallback, NWS from Supabase only
 
 ## Database Schema
 
