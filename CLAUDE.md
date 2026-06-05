@@ -156,6 +156,7 @@ historical accuracy.
 - Resolves via **Weather Underground (KLGA)** — Kalshi resolves via **Central Park**, may differ by a few degrees
 
 ## Current Status
+- Phase 3 detailed plan: see PHASE_3_PLAN.md in project root
 - Phase: Phase 3A — Accuracy Scoring Pipeline
 - Last completed: Phase 2 — Full data pipeline running on Vercel, all crons green
 - Currently working on: Building accuracy scoring pipeline (actual temp fetcher + scoring script)
