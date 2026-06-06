@@ -339,6 +339,11 @@ Three angles:
   - Methodology notes and multi-horizon accuracy plan added to CLAUDE.md
 - Scoreboard as of June 5: Market 5 | NWS 2 | Tie 10 | 17 scored
 
+### 2026-06-05 (continued)
+- Upgraded to Vercel Pro, switched fetch-markets to hourly crons. Multi-horizon accuracy data collection begins now.
+- fetch-forecasts, compute-comparisons, and score-accuracy remain daily
+- market_snapshots confirmed append-only with no unique constraints — hourly inserts are safe
+
 ## Database Schema
 
 ### market_snapshots
@@ -472,18 +477,11 @@ fetch-forecasts should not hardcode a fixed number of days. Instead:
 This keeps sources in sync automatically regardless of how far ahead
 Kalshi opens contracts or how far NWS forecasts extend.
 
-### Cron Schedule (Current vs Target)
-Current (free Vercel plan): once daily
-- fetch-markets: 6am UTC
-- fetch-forecasts: 6:30am UTC
-- compute-comparisons: 7am UTC
-
-Target (Vercel Pro, before public launch):
-- fetch-markets: every hour (0 * * * *)
-- fetch-forecasts: twice daily 6am + 6pm UTC (0 6,18 * * *)
-- compute-comparisons: 10 minutes after fetch-markets (10 * * * *)
-
-Upgrade to Vercel Pro when moving to Phase 3 public launch.
+### Cron Schedule (Current — Vercel Pro)
+- fetch-markets: every hour (0 * * * *) — hourly snapshots enable multi-horizon accuracy tracking
+- fetch-forecasts: 6:30am UTC daily (NWS updates slowly; daily fetch is sufficient)
+- compute-comparisons: 7am UTC daily
+- score-accuracy: 8am UTC daily (after final CLI report issues at ~5:30am UTC)
 
 ## Methodology Notes
 
