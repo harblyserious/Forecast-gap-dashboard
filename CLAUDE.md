@@ -475,6 +475,15 @@ Target (Vercel Pro, before public launch):
 
 Upgrade to Vercel Pro when moving to Phase 3 public launch.
 
+## Methodology Notes
+
+### Accuracy Scoring Horizon
+- Market snapshots used for scoring are taken at ~4:30 AM UTC (~24.5 hours before midnight ET resolution)
+- NWS forecasts used for scoring are taken at ~6:45 AM UTC (~22 hours before resolution)
+- NWS updates every 6-12 hours so the forecast value is effectively identical at both times — comparison is fair
+- Scoring horizon is labeled "24-hour" for simplicity; actual range is 22-25 hours
+- The scoreboard on the dashboard should display "At 24-hour horizon" as a subtitle to clarify what's being measured
+
 ## UI Improvements Backlog
 
 - Filter out Kalshi markets where probability is 99%+ or 1% or less (not interesting, clutters view)
