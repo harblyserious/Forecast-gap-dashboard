@@ -484,6 +484,16 @@ Upgrade to Vercel Pro when moving to Phase 3 public launch.
 - Scoring horizon is labeled "24-hour" for simplicity; actual range is 22-25 hours
 - The scoreboard on the dashboard should display "At 24-hour horizon" as a subtitle to clarify what's being measured
 
+### Multi-Horizon Accuracy (Planned — Phase 4)
+- Goal: measure how market accuracy changes as resolution approaches (48h, 24h, 12h, 6h before resolution)
+- Resolution time for KXHIGHNY is fixed: midnight ET / 5am UTC
+- hours_to_resolution is always computable as: resolution_time - fetched_at — no schema change needed
+- market_snapshots already supports this: multiple rows per day per ticker will accumulate naturally once hourly crons are enabled
+- Scoring pipeline will group snapshots into horizon buckets: any snapshot within 30 minutes of a target horizon (48h, 24h, 12h, 6h) counts as that horizon's snapshot
+- Requires: Vercel Pro upgrade (hourly crons), updated scoring logic to score per horizon, multi-horizon accuracy chart on frontend
+- Note: 3-hour and closer snapshots likely reflect observed reality rather than forecasting (daily high usually occurs mid-afternoon ET) — meaningful horizon window is 48h down to ~6h
+- Every day without hourly snapshots is data that can never be recovered — upgrade Vercel Pro before starting Phase 4
+
 ## UI Improvements Backlog
 
 - Filter out Kalshi markets where probability is 99%+ or 1% or less (not interesting, clutters view)
