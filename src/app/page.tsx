@@ -17,6 +17,7 @@ interface Bucket {
 interface MarketEvent {
   resolutionDate: string; impliedTemp: number; buckets: Bucket[];
   source: "live" | "cached"; fetchedAt: string;
+  snapshotImpliedTemp: number | null; snapshotFetchedAt: string | null;
 }
 interface ForecastRow {
   forecastDate: string; maxTemp24h: number; daytimeHigh: number | null;
@@ -77,6 +78,12 @@ function isAfter5pmET(): boolean {
     new Date().toLocaleString("en-US", { hour: "2-digit", hour12: false, timeZone: "America/New_York" }),
     10
   ) >= 17;
+}
+function formatSnapshotTime(iso: string) {
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+    hour12: true, timeZone: "America/New_York",
+  });
 }
 
 function Skeleton({ className = "" }: { className?: string }) {
@@ -244,9 +251,26 @@ export default function Dashboard() {
             value={
               loading ? <Skeleton className="h-9 w-28" /> :
               marketsError ? <span className="text-rose-400 text-xl font-semibold">Unavailable</span> :
-              <span className="text-violet-400">
-                {impliedTemp !== null ? `${impliedTemp.toFixed(1)}°F` : "—"}
-              </span>
+              (() => {
+                const snap = event?.snapshotImpliedTemp ?? null;
+                const snapAt = event?.snapshotFetchedAt ?? null;
+                const showSnap = snap !== null && impliedTemp !== null && Math.abs(snap - impliedTemp) >= 0.1;
+                return (
+                  <span className="flex flex-col gap-0.5">
+                    <span className="text-violet-400">
+                      {impliedTemp !== null ? `${impliedTemp.toFixed(1)}°F` : "—"}
+                    </span>
+                    {showSnap && (
+                      <span className="text-sm font-semibold text-slate-500 tabular-nums">
+                        {`${snap!.toFixed(1)}°F`}
+                        <span className="ml-1.5 text-xs font-normal text-slate-600">
+                          as of {formatSnapshotTime(snapAt!)}
+                        </span>
+                      </span>
+                    )}
+                  </span>
+                );
+              })()
             }
             sub={marketsError ? "Could not reach Kalshi" : event ? `KXHIGHNY · ${formatDateShort(event.resolutionDate)}` : undefined}
             note={!loading && !marketsError && lateDay ? (
