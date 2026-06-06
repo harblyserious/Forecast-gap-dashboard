@@ -504,6 +504,17 @@ Upgrade to Vercel Pro when moving to Phase 3 public launch.
 - Note: 3-hour and closer snapshots likely reflect observed reality rather than forecasting (daily high usually occurs mid-afternoon ET) — meaningful horizon window is 48h down to ~6h
 - Every day without hourly snapshots is data that can never be recovered — upgrade Vercel Pro before starting Phase 4
 
+## Phase 4 Planned Features
+
+### Implied Temperature Over Time Chart
+Line chart showing Kalshi implied temp across all hourly snapshots for a given resolution date.
+- **X-axis:** hours to resolution (e.g., 48 → 0, left to right)
+- **Y-axis:** implied temperature °F
+- **Reference line:** NWS forecast as a flat horizontal line on the same axis
+- **Purpose:** shows market conviction building or shifting over the 48h window — does the market start far from NWS and converge, or stay divergent?
+- **Data source:** `market_snapshots` table (multiple rows per day once hourly crons are enabled); implied temp recomputed per snapshot using the same bucket-weighted logic as the summary card
+- **Prerequisite:** Vercel Pro upgrade (hourly crons) — daily crons produce only one point per day, which makes the chart meaningless
+
 ## UI Improvements Backlog
 
 - Filter out Kalshi markets where probability is 99%+ or 1% or less (not interesting, clutters view)
