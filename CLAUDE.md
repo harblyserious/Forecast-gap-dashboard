@@ -506,14 +506,53 @@ Upgrade to Vercel Pro when moving to Phase 3 public launch.
 
 ## Phase 4 Planned Features
 
+### Vercel Pro Upgrade
+Enable hourly crons for multi-horizon market snapshot collection. Every missed hour is data that cannot be recovered retroactively — upgrade before starting any multi-horizon work.
+
+### Hourly Cron Cadence
+Once Vercel Pro is active, switch fetch-markets to hourly (0 * * * *). Storage impact is negligible (~25MB/month even at 10 cities). This is the prerequisite for all multi-horizon and implied-temp-over-time features.
+
+### Multi-Horizon Accuracy Chart
+With hourly snapshots, score accuracy at every hour from 48h out to 1h before resolution. Display as a line chart:
+- **X-axis:** hours to resolution (48 → 1)
+- **Y-axis:** mean absolute error (°F)
+- **Two lines:** market error and NWS error
+- **Expected pattern:** market error should decrease as resolution nears (markets incorporate new information) while NWS error stays roughly flat (NWS forecasts don't improve dramatically in the final 48h)
+- **Data source:** `market_snapshots` rows grouped into horizon buckets (±30 min of each target hour)
+
 ### Implied Temperature Over Time Chart
 Line chart showing Kalshi implied temp across all hourly snapshots for a given resolution date.
-- **X-axis:** hours to resolution (e.g., 48 → 0, left to right)
+- **X-axis:** hours to resolution (48 → 0, left to right)
 - **Y-axis:** implied temperature °F
 - **Reference line:** NWS forecast as a flat horizontal line on the same axis
 - **Purpose:** shows market conviction building or shifting over the 48h window — does the market start far from NWS and converge, or stay divergent?
-- **Data source:** `market_snapshots` table (multiple rows per day once hourly crons are enabled); implied temp recomputed per snapshot using the same bucket-weighted logic as the summary card
-- **Prerequisite:** Vercel Pro upgrade (hourly crons) — daily crons produce only one point per day, which makes the chart meaningless
+- **Data source:** `market_snapshots` table; implied temp recomputed per snapshot using the same bucket-weighted logic as the summary card
+- **With hourly crons:** ~48 data points per market — enough to see intraday conviction shifts clearly
+
+### Polymarket Panel
+Add Polymarket vs. NWS comparison panel alongside the existing Kalshi panel.
+- Resolves against Weather Underground (KLGA/LaGuardia) — different station from Kalshi (Central Park)
+- Accuracy scoring must use KLGA ground truth, not NWS CLI
+- NYC series: `seriesSlug = "nyc-daily-weather"` via `/events?tag_slug=temperature`
+
+### Custom Domain
+Register and configure a custom domain on Vercel.
+
+### SEO
+Meta tags and OpenGraph images for social sharing.
+
+### Vercel Analytics
+Enable Vercel Analytics to track page views and performance.
+
+### About / Methodology Page
+Separate `/about` route explaining data sources, implied temp calculation, gap definition, and resolution sources (Kalshi vs. Polymarket differ).
+
+### Multi-City Expansion
+Before adding any new cities, refactor city/series configuration into a single config file:
+- Fields per city: city name, Kalshi series ticker, NWS grid coordinates, resolution station
+- Adding a city should be one config entry, not a code change
+- Frontend city selector must be driven by config, not hardcoded
+- Verify Kalshi has active series for target cities before planning expansion (check `scripts/sample-data/kalshi-weather-series.json`)
 
 ## UI Improvements Backlog
 
