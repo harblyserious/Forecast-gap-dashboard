@@ -67,8 +67,11 @@ function dateTabLabel(date: string) {
   if (date === tomorrow) return `${label} · Tomorrow`;
   return label;
 }
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" });
+function formatTimestamp(iso: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+    hour12: true, timeZoneName: "short",
+  }).format(new Date(iso));
 }
 function todayET() {
   return new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" });
@@ -78,12 +81,6 @@ function isAfter5pmET(): boolean {
     new Date().toLocaleString("en-US", { hour: "2-digit", hour12: false, timeZone: "America/New_York" }),
     10
   ) >= 17;
-}
-function formatSnapshotTime(iso: string) {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
-    hour12: true, timeZone: "America/New_York",
-  });
 }
 
 function Skeleton({ className = "" }: { className?: string }) {
@@ -120,7 +117,7 @@ function LiveBadge({ isLive, fetchedAt }: { isLive: boolean; fetchedAt: string }
   }
   return (
     <span className="rounded-full bg-amber-600/15 px-2 py-0.5 text-xs font-semibold text-amber-400">
-      As of {formatTime(fetchedAt)}
+      As of {formatTimestamp(fetchedAt)}
     </span>
   );
 }
@@ -264,7 +261,7 @@ export default function Dashboard() {
                       <span className="text-sm font-semibold text-slate-500 tabular-nums">
                         {`${snap!.toFixed(1)}°F`}
                         <span className="ml-1.5 text-xs font-normal text-slate-600">
-                          as of {formatSnapshotTime(snapAt!)}
+                          as of {formatTimestamp(snapAt!)}
                         </span>
                       </span>
                     )}
