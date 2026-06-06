@@ -72,6 +72,12 @@ function formatTime(iso: string) {
 function todayET() {
   return new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" });
 }
+function isAfter5pmET(): boolean {
+  return parseInt(
+    new Date().toLocaleString("en-US", { hour: "2-digit", hour12: false, timeZone: "America/New_York" }),
+    10
+  ) >= 17;
+}
 
 function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-slate-800 ${className}`} />;
@@ -79,8 +85,9 @@ function Skeleton({ className = "" }: { className?: string }) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function SummaryCard({ label, value, sub, badge, className = "" }: {
-  label: string; value: React.ReactNode; sub?: string; badge?: React.ReactNode; className?: string;
+function SummaryCard({ label, value, sub, note, badge, className = "" }: {
+  label: string; value: React.ReactNode; sub?: string; note?: React.ReactNode;
+  badge?: React.ReactNode; className?: string;
 }) {
   return (
     <div className={`rounded-xl border border-slate-800 bg-slate-900 px-6 py-5 ${className}`}>
@@ -90,6 +97,7 @@ function SummaryCard({ label, value, sub, badge, className = "" }: {
       </div>
       <div className="text-4xl font-bold tabular-nums">{value}</div>
       {sub && <p className="mt-2 text-xs text-slate-500">{sub}</p>}
+      {note}
     </div>
   );
 }
@@ -113,12 +121,15 @@ function LiveBadge({ isLive, fetchedAt }: { isLive: boolean; fetchedAt: string }
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const [loading,      setLoading]      = useState(true);
-  const [markets,      setMarkets]      = useState<MarketEvent[]>([]);
-  const [forecasts,    setForecasts]    = useState<ForecastRow[]>([]);
-  const [scores,       setScores]       = useState<ScoreRow[]>([]);
-  const [summary,      setSummary]      = useState<AccuracySummary | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [loading,        setLoading]        = useState(true);
+  const [markets,        setMarkets]        = useState<MarketEvent[]>([]);
+  const [forecasts,      setForecasts]      = useState<ForecastRow[]>([]);
+  const [scores,         setScores]         = useState<ScoreRow[]>([]);
+  const [summary,        setSummary]        = useState<AccuracySummary | null>(null);
+  const [selectedDate,   setSelectedDate]   = useState<string | null>(null);
+  const [marketsError,   setMarketsError]   = useState(false);
+  const [forecastsError, setForecastsError] = useState(false);
+  const [accuracyError,  setAccuracyError]  = useState(false);
 
   useEffect(() => {
     Promise.allSettled([
@@ -126,31 +137,53 @@ export default function Dashboard() {
       fetch("/api/forecasts/current").then((r) => r.json()),
       fetch("/api/accuracy").then((r)       => r.json()),
     ]).then(([mRes, fRes, aRes]) => {
-      if (mRes.status === "fulfilled") {
+      if (mRes.status === "fulfilled" && !mRes.value?.error) {
         const events: MarketEvent[] = mRes.value.events ?? [];
         setMarkets(events);
-        // Prefer today's date; fall back to first event with non-trivial buckets
         const todayDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
         const preferred = events.find((e) => e.resolutionDate === todayDate)
           ?? events.find((e) => e.resolutionDate > todayDate)
           ?? events[0];
         setSelectedDate(preferred?.resolutionDate ?? null);
+      } else {
+        setMarketsError(true);
       }
-      if (fRes.status === "fulfilled") setForecasts(fRes.value.forecasts ?? []);
-      if (aRes.status === "fulfilled") {
+      if (fRes.status === "fulfilled" && !fRes.value?.error) {
+        setForecasts(fRes.value.forecasts ?? []);
+      } else {
+        setForecastsError(true);
+      }
+      if (aRes.status === "fulfilled" && !aRes.value?.error) {
         setScores(aRes.value.scores ?? []);
         setSummary(aRes.value.summary ?? null);
+      } else {
+        setAccuracyError(true);
       }
       setLoading(false);
     });
   }, []);
 
-  const event    = markets.find((e) => e.resolutionDate === selectedDate) ?? null;
-  const forecast = forecasts.find((f) => f.forecastDate === selectedDate) ?? null;
+  const event       = markets.find((e) => e.resolutionDate === selectedDate) ?? null;
+  const forecast    = forecasts.find((f) => f.forecastDate === selectedDate) ?? null;
   const impliedTemp = event?.impliedTemp ?? null;
   const nwsTemp     = forecast?.maxTemp24h ?? null;
   const gap         = impliedTemp !== null && nwsTemp !== null
     ? parseFloat((impliedTemp - nwsTemp).toFixed(1)) : null;
+
+  // Stale data: most recent forecast fetched >48 hours ago
+  const staleData = !loading && !forecastsError && forecasts.length > 0 && (() => {
+    const latest = Math.max(...forecasts.map((f) => new Date(f.fetchedAt).getTime()));
+    return Date.now() - latest > 48 * 60 * 60 * 1000;
+  })();
+
+  // Late-day: after 5 PM ET the market price may be converging to observed fact
+  const lateDay = !loading && isAfter5pmET();
+
+  // Tail bucket: any single bucket holds >50% of normalized probability
+  const hasTailBucket = !loading && event !== null && (() => {
+    const total = event.buckets.reduce((s, b) => s + b.yesBid, 0);
+    return total > 0 && event.buckets.some((b) => b.yesBid / total > 0.5);
+  })();
 
   return (
     <div className="min-h-screen bg-[#0a0f1e] text-slate-100">
@@ -171,6 +204,13 @@ export default function Dashboard() {
             <div>{todayET()}</div>
           </div>
         </header>
+
+        {/* ── Stale data warning ──────────────────────────────────────────── */}
+        {staleData && (
+          <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-400">
+            NWS forecast data may be stale — last updated over 48 hours ago
+          </div>
+        )}
 
         {/* ── Date tabs ───────────────────────────────────────────────────── */}
         {markets.length > 1 && (
@@ -203,11 +243,15 @@ export default function Dashboard() {
             }
             value={
               loading ? <Skeleton className="h-9 w-28" /> :
+              marketsError ? <span className="text-rose-400 text-xl font-semibold">Unavailable</span> :
               <span className="text-violet-400">
                 {impliedTemp !== null ? `${impliedTemp.toFixed(1)}°F` : "—"}
               </span>
             }
-            sub={event ? `KXHIGHNY · ${formatDateShort(event.resolutionDate)}` : undefined}
+            sub={marketsError ? "Could not reach Kalshi" : event ? `KXHIGHNY · ${formatDateShort(event.resolutionDate)}` : undefined}
+            note={!loading && !marketsError && lateDay ? (
+              <p className="mt-1.5 text-xs text-amber-500/80">Market may reflect observed temperature</p>
+            ) : undefined}
           />
 
           {/* NWS forecast */}
@@ -216,14 +260,15 @@ export default function Dashboard() {
             className="border-sky-500/20"
             value={
               loading ? <Skeleton className="h-9 w-24" /> :
+              forecastsError ? <span className="text-rose-400 text-xl font-semibold">Unavailable</span> :
               <span className="text-sky-400">
                 {nwsTemp !== null ? `${nwsTemp}°F` : "—"}
               </span>
             }
             sub={
-              forecast
-                ? `24hr max · ${formatDateShort(forecast.forecastDate)} · ${forecast.shortForecast ?? ""}`
-                : undefined
+              forecastsError ? "Could not reach NWS" :
+              forecast ? `24hr max · ${formatDateShort(forecast.forecastDate)} · ${forecast.shortForecast ?? ""}` :
+              undefined
             }
           />
 
@@ -253,12 +298,21 @@ export default function Dashboard() {
           </div>
           {loading ? (
             <div className="h-[280px] animate-pulse rounded-lg bg-slate-800" />
+          ) : marketsError ? (
+            <div className="flex h-[280px] items-center justify-center text-rose-400 text-sm">
+              Unable to load market data
+            </div>
           ) : event ? (
             <DistributionChart buckets={event.buckets} nwsTemp={nwsTemp} />
           ) : (
             <div className="flex h-[280px] items-center justify-center text-slate-500 text-sm">
               No market data for this date
             </div>
+          )}
+          {hasTailBucket && (
+            <p className="mt-3 text-xs text-amber-500/80">
+              High concentration in one bucket — implied temperature estimate may be less reliable
+            </p>
           )}
         </div>
 
@@ -273,22 +327,25 @@ export default function Dashboard() {
               <Skeleton className="h-14 w-28" />
               <Skeleton className="h-14 w-28" />
             </div>
-          ) : summary ? (
-            <div className="mb-6 flex flex-wrap gap-6">
-              {[
-                { label: "Market", value: summary.marketWins, color: "text-emerald-400" },
-                { label: "NWS",    value: summary.nwsWins,    color: "text-sky-400" },
-                { label: "Tie",    value: summary.ties,       color: "text-slate-400" },
-              ].map(({ label, value, color }) => (
-                <div key={label} className="flex flex-col gap-0.5">
-                  <span className={`text-3xl font-bold tabular-nums ${color}`}>{value}</span>
-                  <span className="text-xs uppercase tracking-widest text-slate-500">{label}</span>
+          ) : !accuracyError && summary ? (
+            <div className="mb-6">
+              <div className="flex flex-wrap gap-6">
+                {[
+                  { label: "Market", value: summary.marketWins, color: "text-emerald-400" },
+                  { label: "NWS",    value: summary.nwsWins,    color: "text-sky-400" },
+                  { label: "Tie",    value: summary.ties,       color: "text-slate-400" },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="flex flex-col gap-0.5">
+                    <span className={`text-3xl font-bold tabular-nums ${color}`}>{value}</span>
+                    <span className="text-xs uppercase tracking-widest text-slate-500">{label}</span>
+                  </div>
+                ))}
+                <div className="flex flex-col gap-0.5 border-l border-slate-700 pl-6">
+                  <span className="text-3xl font-bold tabular-nums text-slate-300">{summary.totalScored}</span>
+                  <span className="text-xs uppercase tracking-widest text-slate-500">Scored</span>
                 </div>
-              ))}
-              <div className="flex flex-col gap-0.5 border-l border-slate-700 pl-6">
-                <span className="text-3xl font-bold tabular-nums text-slate-300">{summary.totalScored}</span>
-                <span className="text-xs uppercase tracking-widest text-slate-500">Scored</span>
               </div>
+              <p className="mt-2 text-xs text-slate-600">At 24-hour horizon</p>
             </div>
           ) : null}
 
@@ -315,6 +372,12 @@ export default function Dashboard() {
                       ))}
                     </tr>
                   ))
+                ) : accuracyError ? (
+                  <tr>
+                    <td colSpan={7} className="py-8 text-center text-rose-400 text-sm">
+                      Unable to load accuracy data
+                    </td>
+                  </tr>
                 ) : scores.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-8 text-center text-slate-500">

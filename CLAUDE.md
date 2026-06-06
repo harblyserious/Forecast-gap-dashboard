@@ -156,17 +156,9 @@ historical accuracy.
 - Resolves via **Weather Underground (KLGA)** — Kalshi resolves via **Central Park**, may differ by a few degrees
 
 ## Current Status
-- Phase 3 detailed plan: see PHASE_3_PLAN.md in project root
-- Phase: Phase 3B — Dashboard Frontend
-- Last completed: Phase 3A — Accuracy scoring pipeline complete, backfill run, cron deployed
-- Next milestone: Phase 3B — Dashboard frontend with real-time Kalshi odds
-
-### Phase 3 TODO
-- Build polished dashboard with distribution charts
-- Kalshi vs NWS and Polymarket vs NWS panels side by side
-- Historical accuracy tracking
-- City filtering
-- Upgrade Vercel to Pro for hourly crons before launch
+- Phase: Phase 4 — Polish, Custom Domain, Vercel Pro Upgrade
+- Last completed: Phase 3 — Full dashboard with accuracy scoring, distribution chart, and polish/QA
+- Next milestone: Vercel Pro upgrade (hourly crons), custom domain, multi-horizon accuracy chart
 
 ## Matching Logic
 
@@ -328,6 +320,24 @@ Three angles:
   - Built score-accuracy.ts: groups comparisons by event, selects 24hr-horizon snapshot, fetches CLI temp (cached per date), inserts accuracy_scores
   - Backfill: 16/17 dates scored (May 19–June 3); June 4 skipped pending final CLI issuance — Scoreboard: Market 5 | NWS 2 | Tie 9
   - Cron route deployed at /api/cron/score-accuracy, scheduled 8 AM UTC (after final CLI issues at ~5:30 AM UTC)
+
+### 2026-06-05
+- Phase 3 complete
+- Phase 3B complete:
+  - Four API routes live: /api/markets/live (live Kalshi + Supabase fallback), /api/forecasts/current (live NWS fallback for missing dates), /api/accuracy, /api/comparisons/current
+  - Full dark dashboard: date tabs, summary cards (Kalshi/NWS/gap), distribution chart, historical accuracy scoreboard + table
+  - Distribution chart rewritten as plain SVG (Recharts 3.x Bar incompatibility); NWS curve uses PDF at bucket midpoints for correct bell shape
+  - Fixed: /api/forecasts/current now does live NWS fetch for upcoming dates missing from Supabase (covers Kalshi next-day markets opening after daily cron)
+- Phase 3C complete:
+  - Loading skeletons in all three sections (summary cards, chart, accuracy table)
+  - Error states per section: "Unavailable" in cards, "Unable to load" in chart and table; each section fails independently
+  - Empty state: "No accuracy data yet" in accuracy table
+  - Stale data banner: warns if most recent NWS forecast is >48 hours old
+  - Late-day note: after 5 PM ET, Kalshi card shows "Market may reflect observed temperature"
+  - Scoreboard subtitle: "At 24-hour horizon" clarifies scoring methodology for visitors
+  - Tail bucket warning: flags when any single bucket holds >50% probability
+  - Methodology notes and multi-horizon accuracy plan added to CLAUDE.md
+- Scoreboard as of June 5: Market 5 | NWS 2 | Tie 10 | 17 scored
 
 ## Database Schema
 
