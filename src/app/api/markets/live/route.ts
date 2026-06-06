@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getOpenMarkets, type KalshiMarket } from "@/lib/kalshi-client";
-import { getRecentSnapshotsForSeries, type MarketSnapshot } from "@/lib/database";
+import { getRecentSnapshotsForSeries, getEarliestSnapshotsForDates, type MarketSnapshot } from "@/lib/database";
 
 export const dynamic = "force-dynamic";
 
@@ -19,11 +19,13 @@ interface Bucket {
 }
 
 interface MarketEvent {
-  resolutionDate: string;
-  impliedTemp:    number;
-  buckets:        Bucket[];
-  source:         "live" | "cached";
-  fetchedAt:      string;
+  resolutionDate:      string;
+  impliedTemp:         number;
+  buckets:             Bucket[];
+  source:              "live" | "cached";
+  fetchedAt:           string;
+  snapshotImpliedTemp: number | null;
+  snapshotFetchedAt:   string | null;
 }
 
 // ─── Implied-temp computation ─────────────────────────────────────────────────
@@ -100,10 +102,12 @@ async function fetchLiveEvents(): Promise<MarketEvent[]> {
 
     events.push({
       resolutionDate,
-      impliedTemp: computeImpliedTemp(buckets),
+      impliedTemp:         computeImpliedTemp(buckets),
       buckets,
-      source:    "live",
+      source:              "live",
       fetchedAt,
+      snapshotImpliedTemp: null,
+      snapshotFetchedAt:   null,
     });
   }
 
@@ -145,10 +149,12 @@ async function fetchCachedEvents(today: string): Promise<MarketEvent[]> {
 
     events.push({
       resolutionDate,
-      impliedTemp: computeImpliedTemp(buckets),
+      impliedTemp:         computeImpliedTemp(buckets),
       buckets,
-      source:    "cached",
+      source:              "cached",
       fetchedAt,
+      snapshotImpliedTemp: null,
+      snapshotFetchedAt:   null,
     });
   }
 
@@ -162,6 +168,37 @@ export async function GET() {
 
   try {
     const events = await fetchLiveEvents();
+
+    // Attach earliest Supabase snapshot per event (best-effort — failures are silent)
+    try {
+      const dates     = events.map((e) => e.resolutionDate);
+      const snapshots = await getEarliestSnapshotsForDates(SERIES, CITY, dates);
+
+      // Group earliest-batch rows by resolution_date
+      const byDate = new Map<string, MarketSnapshot[]>();
+      for (const s of snapshots) {
+        const group = byDate.get(s.resolution_date) ?? [];
+        group.push(s);
+        byDate.set(s.resolution_date, group);
+      }
+
+      for (const event of events) {
+        const group = byDate.get(event.resolutionDate);
+        if (!group?.length) continue;
+        const buckets: Bucket[] = group.map((s) => ({
+          threshold:  s.threshold,
+          capStrike:  s.cap_strike,
+          strikeType: s.strike_type,
+          yesBid:     s.yes_bid,
+          midpoint:   bucketMidpoint(s.strike_type, s.threshold, s.cap_strike),
+        }));
+        event.snapshotImpliedTemp = computeImpliedTemp(buckets);
+        event.snapshotFetchedAt   = group[0].fetched_at;
+      }
+    } catch (e) {
+      console.error("snapshot fetch failed (non-fatal):", (e as Error).message);
+    }
+
     return NextResponse.json({ events });
   } catch {
     // Kalshi is down, slow, or returned unusable data — serve from Supabase

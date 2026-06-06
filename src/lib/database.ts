@@ -192,6 +192,37 @@ export async function getRecentSnapshotsForSeries(
   return (data ?? []) as MarketSnapshot[];
 }
 
+// Returns all market_snapshots from the earliest (first-ever) cron batch for
+// each of the given resolution_dates. Each cron run shares a single fetched_at
+// timestamp, so filtering to the minimum fetched_at per date yields the full
+// set of bucket rows from the first time that date was ever fetched.
+// Used by /api/markets/live to show an "as of [date]" snapshot alongside live price.
+export async function getEarliestSnapshotsForDates(
+  seriesTicker: string,
+  city: string,
+  resolutionDates: string[]
+): Promise<MarketSnapshot[]> {
+  if (resolutionDates.length === 0) return [];
+  const { data, error } = await supabaseAdmin
+    .from("market_snapshots")
+    .select("*")
+    .eq("series_ticker", seriesTicker)
+    .eq("city", city)
+    .in("resolution_date", resolutionDates)
+    .order("fetched_at", { ascending: true });
+
+  if (error) throw new Error(`getEarliestSnapshotsForDates: ${error.message}`);
+  const rows = (data ?? []) as MarketSnapshot[];
+
+  // For each resolution_date, keep only rows from the earliest fetched_at batch
+  const earliestByDate = new Map<string, string>();
+  for (const r of rows) {
+    const prev = earliestByDate.get(r.resolution_date);
+    if (!prev || r.fetched_at < prev) earliestByDate.set(r.resolution_date, r.fetched_at);
+  }
+  return rows.filter((r) => earliestByDate.get(r.resolution_date) === r.fetched_at);
+}
+
 // Returns the most recent forecast per forecast_date for a city, for dates
 // within the last 2 days and forward. Used by /api/forecasts/current.
 export async function getUpcomingForecasts(city: string, today: string): Promise<Forecast[]> {
