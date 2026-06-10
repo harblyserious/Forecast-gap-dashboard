@@ -7,6 +7,10 @@ const DistributionChart = dynamic(
   () => import("@/components/distribution-chart"),
   { ssr: false, loading: () => <div className="h-[280px] animate-pulse rounded-lg bg-slate-800" /> }
 );
+const LineChart = dynamic(
+  () => import("@/components/line-chart"),
+  { ssr: false, loading: () => <div className="h-[260px] animate-pulse rounded-lg bg-slate-800" /> }
+);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,6 +32,8 @@ interface ScoreRow {
   marketError: number; nwsError: number; winner: "market" | "nws" | "tie";
 }
 interface AccuracySummary { marketWins: number; nwsWins: number; ties: number; totalScored: number; }
+interface HistoryPoint { fetchedAt: string; hoursToResolution: number; impliedTemp: number; }
+interface HorizonPoint { hours: number; marketMae: number | null; nwsMae: number | null; n: number; }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -134,6 +140,11 @@ export default function Dashboard() {
   const [marketsError,   setMarketsError]   = useState(false);
   const [forecastsError, setForecastsError] = useState(false);
   const [accuracyError,  setAccuracyError]  = useState(false);
+  const [history,        setHistory]        = useState<HistoryPoint[]>([]);
+  const [historyNws,     setHistoryNws]     = useState<number | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [horizons,       setHorizons]       = useState<HorizonPoint[]>([]);
+  const [horizonDays,    setHorizonDays]    = useState(0);
 
   useEffect(() => {
     Promise.allSettled([
@@ -165,7 +176,35 @@ export default function Dashboard() {
       }
       setLoading(false);
     });
+
+    fetch("/api/accuracy/horizons")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d?.error) {
+          setHorizons(d.horizons ?? []);
+          setHorizonDays(d.dates?.length ?? 0);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  // Implied temp history for the selected date
+  useEffect(() => {
+    if (!selectedDate) return;
+    setHistoryLoading(true);
+    fetch(`/api/markets/history?date=${selectedDate}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d?.error) {
+          setHistory(d.points ?? []);
+          setHistoryNws(d.nwsTemp ?? null);
+        } else {
+          setHistory([]);
+        }
+      })
+      .catch(() => setHistory([]))
+      .finally(() => setHistoryLoading(false));
+  }, [selectedDate]);
 
   const event       = markets.find((e) => e.resolutionDate === selectedDate) ?? null;
   const forecast    = forecasts.find((f) => f.forecastDate === selectedDate) ?? null;
@@ -340,6 +379,46 @@ export default function Dashboard() {
           )}
         </div>
 
+        {/* ── Implied temp over time ──────────────────────────────────────── */}
+        <div className="mb-6 rounded-xl border border-slate-800 bg-slate-900 p-5">
+          <div className="mb-4">
+            <h2 className="font-semibold text-slate-100">Implied Temperature Over Time</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Kalshi implied temp per hourly snapshot{selectedDate ? ` · ${formatDateShort(selectedDate)}` : ""} · NWS forecast as reference
+            </p>
+          </div>
+          {historyLoading ? (
+            <div className="h-[260px] animate-pulse rounded-lg bg-slate-800" />
+          ) : history.length >= 2 ? (
+            <LineChart
+              xLabel="Hours to resolution"
+              yUnit="°"
+              series={[
+                {
+                  name: "Kalshi implied",
+                  color: "#8b5cf6",
+                  points: history.map((p) => ({ x: p.hoursToResolution, y: p.impliedTemp })),
+                },
+                ...(historyNws !== null && history.length > 0
+                  ? [{
+                      name: "NWS forecast",
+                      color: "#38bdf8",
+                      dashed: true,
+                      points: [
+                        { x: Math.max(...history.map((p) => p.hoursToResolution)), y: historyNws },
+                        { x: Math.min(...history.map((p) => p.hoursToResolution)), y: historyNws },
+                      ],
+                    }]
+                  : []),
+              ]}
+            />
+          ) : (
+            <div className="flex h-[260px] items-center justify-center text-slate-500 text-sm">
+              Not enough hourly snapshots yet for this date
+            </div>
+          )}
+        </div>
+
         {/* ── Historical accuracy ─────────────────────────────────────────── */}
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
           <h2 className="mb-4 font-semibold text-slate-100">Historical Accuracy</h2>
@@ -372,6 +451,38 @@ export default function Dashboard() {
               <p className="mt-2 text-xs text-slate-600">At 24-hour horizon</p>
             </div>
           ) : null}
+
+          {/* Accuracy by horizon */}
+          {horizons.length >= 2 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-semibold text-slate-200">Accuracy by Horizon</h3>
+              <p className="mb-3 text-xs text-slate-500 mt-0.5">
+                Mean absolute error vs. hours before resolution · {horizonDays} scored day{horizonDays === 1 ? "" : "s"} ·
+                hourly coverage accumulating since Jun 6
+              </p>
+              <LineChart
+                xLabel="Hours to resolution"
+                yUnit="°"
+                yZeroFloor
+                series={[
+                  {
+                    name: "Market error",
+                    color: "#8b5cf6",
+                    points: horizons
+                      .filter((h) => h.marketMae !== null)
+                      .map((h) => ({ x: h.hours, y: h.marketMae! })),
+                  },
+                  {
+                    name: "NWS error",
+                    color: "#38bdf8",
+                    points: horizons
+                      .filter((h) => h.nwsMae !== null)
+                      .map((h) => ({ x: h.hours, y: h.nwsMae! })),
+                  },
+                ]}
+              />
+            </div>
+          )}
 
           {/* Accuracy table */}
           <div className="overflow-x-auto">

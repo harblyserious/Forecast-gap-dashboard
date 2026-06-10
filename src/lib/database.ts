@@ -223,6 +223,53 @@ export async function getEarliestSnapshotsForDates(
   return rows.filter((r) => earliestByDate.get(r.resolution_date) === r.fetched_at);
 }
 
+// Returns ALL snapshots for a series/city across the given resolution dates,
+// paginated past Supabase's 1000-row default cap. Used for multi-horizon
+// accuracy and implied-temp-over-time, where every hourly batch matters.
+export async function getAllSnapshotsForDates(
+  seriesTicker: string,
+  city: string,
+  resolutionDates: string[]
+): Promise<MarketSnapshot[]> {
+  if (resolutionDates.length === 0) return [];
+  const PAGE = 1000;
+  const rows: MarketSnapshot[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabaseAdmin
+      .from("market_snapshots")
+      .select("*")
+      .eq("series_ticker", seriesTicker)
+      .eq("city", city)
+      .in("resolution_date", resolutionDates)
+      .order("fetched_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
+
+    if (error) throw new Error(`getAllSnapshotsForDates: ${error.message}`);
+    rows.push(...((data ?? []) as MarketSnapshot[]));
+    if (!data || data.length < PAGE) break;
+  }
+  return rows;
+}
+
+// Returns every forecast row (each daily fetch) for the given dates, so callers
+// can pick the forecast that was current at an arbitrary point in time.
+export async function getForecastHistoryForDates(
+  city: string,
+  dates: string[]
+): Promise<Forecast[]> {
+  if (dates.length === 0) return [];
+  const { data, error } = await supabaseAdmin
+    .from("forecasts")
+    .select("*")
+    .eq("city", city)
+    .in("forecast_date", dates)
+    .order("fetched_at", { ascending: true });
+
+  if (error) throw new Error(`getForecastHistoryForDates: ${error.message}`);
+  return (data ?? []) as Forecast[];
+}
+
 // Returns the most recent forecast per forecast_date for a city, for dates
 // within the last 2 days and forward. Used by /api/forecasts/current.
 export async function getUpcomingForecasts(city: string, today: string): Promise<Forecast[]> {
