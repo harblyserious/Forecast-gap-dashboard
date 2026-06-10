@@ -161,7 +161,8 @@ historical accuracy.
 - Phase: Phase 4 — code-side work complete (2026-06-10)
 - Done: Vercel Pro + hourly crons, multi-horizon accuracy chart, implied-temp-over-time chart, About page, SEO/OG, Vercel Analytics, city config refactor, UI backlog
 - Deferred: Polymarket panel (see Polymarket API notes — tag/parser changes needed first)
-- Blocked on user: custom domain (choose + attach in Vercel dashboard), enable Web Analytics in Vercel project settings
+- Custom domain: aporetic.app (primary) + aporetic.com (redirect), purchased via Squarespace 2026-06; site URL fallback updated in layout.tsx — set NEXT_PUBLIC_SITE_URL=https://aporetic.app in Vercel env as well
+- Blocked on user: enable Web Analytics in Vercel project settings
 
 ## Matching Logic
 
