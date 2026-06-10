@@ -18,19 +18,19 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://aporetic.app";
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Aporetic — Markets vs. Meteorologists",
+    default: "Aporetic · Measuring the prediction market gap",
     template: "%s · Aporetic",
   },
   description:
-    "Markets vs. Meteorologists — tracking how well-calibrated weather prediction markets are against National Weather Service forecasts.",
+    "Markets vs. Meteorologists — measuring the gap between prediction markets and National Weather Service forecasts on daily temperatures.",
   keywords: [
     "prediction markets", "Kalshi", "weather forecast", "NWS", "NOAA",
     "market calibration", "temperature markets", "forecast accuracy",
   ],
   openGraph: {
-    title: "Aporetic — Markets vs. Meteorologists",
+    title: "Aporetic · Measuring the prediction market gap",
     description:
-      "Prediction markets vs. NWS forecasts — who calls the daily high temperature better, markets or meteorologists?",
+      "Markets vs. Meteorologists — measuring the gap between prediction markets and NWS forecasts on daily temperatures.",
     url: SITE_URL,
     siteName: "Aporetic",
     locale: "en_US",
@@ -38,9 +38,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Aporetic — Markets vs. Meteorologists",
+    title: "Aporetic · Measuring the prediction market gap",
     description:
-      "Prediction markets vs. NWS forecasts — who calls the daily high temperature better, markets or meteorologists?",
+      "Markets vs. Meteorologists — measuring the gap between prediction markets and NWS forecasts on daily temperatures.",
   },
   robots: {
     index: true,

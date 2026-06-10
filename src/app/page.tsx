@@ -294,8 +294,9 @@ export default function Dashboard() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
               Aporetic
+              <span className="font-normal text-slate-400"> · Measuring the prediction market gap</span>
             </h1>
-            <p className="mt-1 text-sm text-slate-400">
+            <p className="mt-1 text-base font-medium text-slate-200">
               Markets vs. Meteorologists
             </p>
             <p className="mt-0.5 text-xs text-slate-500">
