@@ -21,7 +21,7 @@ interface Bucket {
 }
 interface MarketEvent {
   resolutionDate: string; impliedTemp: number; buckets: Bucket[];
-  source: "live" | "cached"; fetchedAt: string;
+  source: "live" | "cached" | "resolved"; fetchedAt: string;
   snapshotImpliedTemp: number | null; snapshotFetchedAt: string | null;
 }
 interface ForecastRow {
@@ -169,6 +169,9 @@ export default function Dashboard() {
   const [horizons,       setHorizons]       = useState<HorizonPoint[]>([]);
   const [horizonDays,    setHorizonDays]    = useState(0);
   const [pastOpen,       setPastOpen]       = useState(false);
+  // Final snapshot batch for a selected past date, keyed by date so stale
+  // results never render and no synchronous state clearing is needed
+  const [pastResolved,   setPastResolved]   = useState<{ date: string; event: MarketEvent | null } | null>(null);
 
   // Loading flags derived from which request keys have completed — avoids
   // synchronous setState inside effects (react-hooks/set-state-in-effect)
@@ -243,15 +246,31 @@ export default function Dashboard() {
       .finally(() => setLoadedHistory(key));
   }, [selectedDate, cityKey]);
 
-  const event       = markets.find((e) => e.resolutionDate === selectedDate) ?? null;
-  const forecast    = forecasts.find((f) => f.forecastDate === selectedDate) ?? null;
+  // Final market state for a selected past date (no live market exists)
+  useEffect(() => {
+    if (!selectedDate || selectedDate >= todayDateET()) return;
+    const date = selectedDate;
+    fetch(`/api/markets/live?city=${cityKey}&date=${date}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const events: MarketEvent[] = d?.error ? [] : d.events ?? [];
+        setPastResolved({ date, event: events[0] ?? null });
+      })
+      .catch(() => setPastResolved({ date, event: null }));
+  }, [selectedDate, cityKey]);
 
   // Past-day navigation: resolved dates selectable from the dropdown
   const pastDates      = getPastDates();
   const isPastSelected = selectedDate !== null && selectedDate < todayDateET();
   const selectedScore  = isPastSelected ? scores.find((s) => s.date === selectedDate) ?? null : null;
+  const pastEvent      = isPastSelected && pastResolved?.date === selectedDate ? pastResolved.event : null;
+  const pastLoading    = isPastSelected && pastResolved?.date !== selectedDate;
+
+  const event       = markets.find((e) => e.resolutionDate === selectedDate) ?? pastEvent;
+  const forecast    = forecasts.find((f) => f.forecastDate === selectedDate) ?? null;
   const impliedTemp = event?.impliedTemp ?? null;
-  const nwsTemp     = forecast?.maxTemp24h ?? null;
+  // Past dates fall back to the forecast captured at scoring time
+  const nwsTemp     = forecast?.maxTemp24h ?? selectedScore?.nwsTemp ?? null;
   const gap         = impliedTemp !== null && nwsTemp !== null
     ? parseFloat((impliedTemp - nwsTemp).toFixed(1)) : null;
 
@@ -379,12 +398,12 @@ export default function Dashboard() {
             label="Kalshi Implied"
             className="border-violet-500/20"
             badge={
-              loading || !event ? undefined :
+              loading || pastLoading || !event ? undefined :
               <LiveBadge isLive={event.source === "live"} fetchedAt={event.fetchedAt} />
             }
             value={
-              loading ? <Skeleton className="h-9 w-28" /> :
-              marketsError ? <span className="text-rose-400 text-xl font-semibold">Unavailable</span> :
+              loading || pastLoading ? <Skeleton className="h-9 w-28" /> :
+              marketsError && !isPastSelected ? <span className="text-rose-400 text-xl font-semibold">Unavailable</span> :
               (() => {
                 const snap = event?.snapshotImpliedTemp ?? null;
                 const snapAt = event?.snapshotFetchedAt ?? null;
@@ -406,7 +425,11 @@ export default function Dashboard() {
                 );
               })()
             }
-            sub={marketsError ? "Could not reach Kalshi" : event ? `${CITIES[cityKey].kalshiSeries} · ${formatDateShort(event.resolutionDate)}` : undefined}
+            sub={
+              marketsError && !isPastSelected ? "Could not reach Kalshi" :
+              event ? `${CITIES[cityKey].kalshiSeries} · ${formatDateShort(event.resolutionDate)}${event.source === "resolved" ? " · final" : ""}` :
+              undefined
+            }
             note={!loading && !marketsError && lateDay && !isPastSelected ? (
               <p className="mt-1.5 text-xs text-amber-500/80">Market may reflect observed temperature</p>
             ) : undefined}
@@ -450,13 +473,15 @@ export default function Dashboard() {
             <div>
               <h2 className="font-semibold text-slate-100">Market Distribution vs. NWS Forecast</h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Kalshi bucket probabilities (bars) · NWS normal curve σ=3°F (line)
+                {event?.source === "resolved"
+                  ? "Final market state at resolution · NWS normal curve σ=3°F (line)"
+                  : "Kalshi bucket probabilities (bars) · NWS normal curve σ=3°F (line)"}
               </p>
             </div>
           </div>
-          {loading ? (
+          {loading || pastLoading ? (
             <div className="h-[280px] animate-pulse rounded-lg bg-slate-800" />
-          ) : marketsError ? (
+          ) : marketsError && !isPastSelected ? (
             <div className="flex h-[280px] items-center justify-center text-rose-400 text-sm">
               Unable to load market data
             </div>

@@ -223,6 +223,31 @@ export async function getEarliestSnapshotsForDates(
   return rows.filter((r) => earliestByDate.get(r.resolution_date) === r.fetched_at);
 }
 
+// Returns the latest snapshot batch (all bucket rows sharing the most recent
+// fetched_at) for one resolution date. For resolved dates this is the final,
+// converged end-of-day market state. Used by /api/markets/live?date=.
+export async function getLatestSnapshotBatchForDate(
+  seriesTicker: string,
+  city: string,
+  resolutionDate: string
+): Promise<MarketSnapshot[]> {
+  // Buckets in a batch share one fetched_at; ~15 buckets max per event, so a
+  // 50-row window ordered newest-first always contains the full latest batch.
+  const { data, error } = await supabaseAdmin
+    .from("market_snapshots")
+    .select("*")
+    .eq("series_ticker", seriesTicker)
+    .eq("city", city)
+    .eq("resolution_date", resolutionDate)
+    .order("fetched_at", { ascending: false })
+    .limit(50);
+
+  if (error) throw new Error(`getLatestSnapshotBatchForDate: ${error.message}`);
+  const rows = (data ?? []) as MarketSnapshot[];
+  if (rows.length === 0) return [];
+  return rows.filter((r) => r.fetched_at === rows[0].fetched_at);
+}
+
 // Returns ALL snapshots for a series/city across the given resolution dates,
 // paginated past Supabase's 1000-row default cap. Used for multi-horizon
 // accuracy and implied-temp-over-time, where every hourly batch matters.

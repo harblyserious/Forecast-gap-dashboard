@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOpenMarkets, type KalshiMarket } from "@/lib/kalshi-client";
-import { getRecentSnapshotsForSeries, getEarliestSnapshotsForDates, type MarketSnapshot } from "@/lib/database";
+import {
+  getRecentSnapshotsForSeries,
+  getEarliestSnapshotsForDates,
+  getLatestSnapshotBatchForDate,
+  type MarketSnapshot,
+} from "@/lib/database";
 import { getCityOrDefault, type CityConfig } from "@/lib/cities";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +26,7 @@ interface MarketEvent {
   resolutionDate:      string;
   impliedTemp:         number;
   buckets:             Bucket[];
-  source:              "live" | "cached";
+  source:              "live" | "cached" | "resolved";
   fetchedAt:           string;
   snapshotImpliedTemp: number | null;
   snapshotFetchedAt:   string | null;
@@ -165,11 +170,48 @@ async function fetchCachedEvents(today: string, city: CityConfig): Promise<Marke
   return events.sort((a, b) => a.resolutionDate.localeCompare(b.resolutionDate));
 }
 
+// ─── Resolved path (final snapshot batch for a past date) ────────────────────
+
+async function fetchResolvedEvent(city: CityConfig, date: string): Promise<MarketEvent[]> {
+  const batch = await getLatestSnapshotBatchForDate(city.kalshiSeries, city.key, date);
+  if (batch.length === 0) return [];
+
+  const buckets: Bucket[] = batch.map((s) => ({
+    threshold:  s.threshold,
+    capStrike:  s.cap_strike,
+    strikeType: s.strike_type,
+    yesBid:     s.yes_bid,
+    midpoint:   bucketMidpoint(s.strike_type, s.threshold, s.cap_strike),
+  }));
+
+  return [{
+    resolutionDate:      date,
+    impliedTemp:         computeImpliedTemp(buckets),
+    buckets:             sortBuckets(buckets),
+    source:              "resolved",
+    fetchedAt:           batch[0].fetched_at,
+    snapshotImpliedTemp: null,
+    snapshotFetchedAt:   null,
+  }];
+}
+
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
   const city  = getCityOrDefault(request.nextUrl.searchParams.get("city"));
+  const date  = request.nextUrl.searchParams.get("date");
   const today = new Date().toLocaleDateString("en-CA", { timeZone: city.timeZone });
+
+  // Past resolved date: serve the final market_snapshots batch — there is no
+  // live market to fetch. Today/tomorrow (or no date) follows the live path.
+  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date) && date < today) {
+    try {
+      const events = await fetchResolvedEvent(city, date);
+      return NextResponse.json({ events });
+    } catch (err) {
+      return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    }
+  }
 
   try {
     const events = await fetchLiveEvents(city);
