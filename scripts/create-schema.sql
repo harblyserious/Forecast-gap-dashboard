@@ -1,4 +1,4 @@
--- Forecast Gap Dashboard — Database Schema
+-- Aporetic (forecast gap dashboard) — Database Schema
 --
 -- market_snapshots: raw prediction market data captured each pipeline run
 -- forecasts:        NWS hourly forecast data captured each pipeline run

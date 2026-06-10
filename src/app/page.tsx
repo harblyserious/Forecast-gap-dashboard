@@ -293,10 +293,13 @@ export default function Dashboard() {
         <header className="mb-8 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              Forecast Gap Dashboard
+              Aporetic
             </h1>
             <p className="mt-1 text-sm text-slate-400">
-              {CITIES[cityKey].displayName} prediction markets vs. NWS forecast
+              Markets vs. Meteorologists
+            </p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {CITIES[cityKey].displayName} · Prediction markets vs. NWS forecast
             </p>
           </div>
           <div className="text-right text-sm text-slate-500">

@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "About & Methodology",
   description:
-    "How the Forecast Gap Dashboard compares prediction market odds against NWS forecasts: data sources, implied temperature calculation, and accuracy scoring.",
+    "How Aporetic compares prediction market odds against NWS forecasts: data sources, implied temperature calculation, and accuracy scoring.",
 };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -34,7 +34,7 @@ export default function AboutPage() {
 
         <Section title="What this is">
           <p>
-            The Forecast Gap Dashboard is a calibration tool for prediction markets. It compares
+            Aporetic is a calibration tool for prediction markets. It compares
             the temperature implied by prediction market prices (Kalshi) against the official
             National Weather Service forecast for the same day, then — once the day resolves —
             scores which one was closer to the observed temperature.
