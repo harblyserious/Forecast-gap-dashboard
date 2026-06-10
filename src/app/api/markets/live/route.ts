@@ -1,11 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getOpenMarkets, type KalshiMarket } from "@/lib/kalshi-client";
 import { getRecentSnapshotsForSeries, getEarliestSnapshotsForDates, type MarketSnapshot } from "@/lib/database";
+import { getCityOrDefault, type CityConfig } from "@/lib/cities";
 
 export const dynamic = "force-dynamic";
 
-const SERIES = "KXHIGHNY";
-const CITY   = "nyc";
 const KALSHI_TIMEOUT_MS = 3000;
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
@@ -67,11 +66,11 @@ function resolutionDateFromTicker(eventTicker: string): string | null {
 
 // ─── Live path ────────────────────────────────────────────────────────────────
 
-async function fetchLiveEvents(): Promise<MarketEvent[]> {
+async function fetchLiveEvents(city: CityConfig): Promise<MarketEvent[]> {
   const fetchedAt = new Date().toISOString();
 
   const markets: KalshiMarket[] = await Promise.race([
-    getOpenMarkets(SERIES),
+    getOpenMarkets(city.kalshiSeries),
     new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error("Kalshi timeout")), KALSHI_TIMEOUT_MS)
     ),
@@ -121,8 +120,8 @@ async function fetchLiveEvents(): Promise<MarketEvent[]> {
 
 // ─── Fallback path (Supabase snapshots) ──────────────────────────────────────
 
-async function fetchCachedEvents(today: string): Promise<MarketEvent[]> {
-  const snapshots = await getRecentSnapshotsForSeries(SERIES, CITY, today);
+async function fetchCachedEvents(today: string, city: CityConfig): Promise<MarketEvent[]> {
+  const snapshots = await getRecentSnapshotsForSeries(city.kalshiSeries, city.key, today);
   if (snapshots.length === 0) return [];
 
   // Dedupe: latest snapshot per (event_ticker, market_ticker)
@@ -168,16 +167,17 @@ async function fetchCachedEvents(today: string): Promise<MarketEvent[]> {
 
 // ─── Route handler ────────────────────────────────────────────────────────────
 
-export async function GET() {
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+export async function GET(request: NextRequest) {
+  const city  = getCityOrDefault(request.nextUrl.searchParams.get("city"));
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: city.timeZone });
 
   try {
-    const events = await fetchLiveEvents();
+    const events = await fetchLiveEvents(city);
 
     // Attach earliest Supabase snapshot per event (best-effort — failures are silent)
     try {
       const dates     = events.map((e) => e.resolutionDate);
-      const snapshots = await getEarliestSnapshotsForDates(SERIES, CITY, dates);
+      const snapshots = await getEarliestSnapshotsForDates(city.kalshiSeries, city.key, dates);
 
       // Group earliest-batch rows by resolution_date
       const byDate = new Map<string, MarketSnapshot[]>();
@@ -208,7 +208,7 @@ export async function GET() {
   } catch {
     // Kalshi is down, slow, or returned unusable data — serve from Supabase
     try {
-      const events = await fetchCachedEvents(today);
+      const events = await fetchCachedEvents(today, city);
       return NextResponse.json({ events });
     } catch (fallbackErr) {
       return NextResponse.json(

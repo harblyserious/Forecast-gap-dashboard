@@ -2,13 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getGridPoint, getForecastHourly, type Forecast } from "@/lib/noaa-client";
 import { getOpenMarkets, type KalshiMarket } from "@/lib/kalshi-client";
 import { getLatestComparison, type Comparison } from "@/lib/database";
+import { CITIES } from "@/lib/cities";
 
 export const dynamic = "force-dynamic";
-
-const CITY_CONFIGS: Record<string, { lat: number; lon: number; kalshiSeries: string }> = {
-  // Central Park coordinates — Kalshi KXHIGHNY resolves against Central Park / NWS Climatological Report
-  nyc: { lat: 40.7829, lon: -73.9654, kalshiSeries: "KXHIGHNY" },
-};
 
 // ─── Response shapes ──────────────────────────────────────────────────────────
 
@@ -117,11 +113,11 @@ async function fetchLive(city: string, config: { lat: number; lon: number; kalsh
 
 export async function GET(request: NextRequest) {
   const city   = (request.nextUrl.searchParams.get("city") ?? "nyc").toLowerCase();
-  const config = CITY_CONFIGS[city];
+  const config = CITIES[city];
 
   if (!config) {
     return NextResponse.json(
-      { error: `Unknown city "${city}". Supported: ${Object.keys(CITY_CONFIGS).join(", ")}` },
+      { error: `Unknown city "${city}". Supported: ${Object.keys(CITIES).join(", ")}` },
       { status: 400 }
     );
   }

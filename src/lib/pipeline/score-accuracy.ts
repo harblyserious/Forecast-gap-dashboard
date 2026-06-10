@@ -84,15 +84,16 @@ export async function runScoreAccuracy(): Promise<ScoreAccuracyResult> {
     toScore.push(chosen);
   }
 
-  // Cache CLI results per date to avoid redundant fetches
+  // Cache CLI results per city+date to avoid redundant fetches
   const cliCache = new Map<string, number>();
 
   for (const comp of toScore) {
     try {
-      let actualTemp = cliCache.get(comp.comparison_date);
+      const cacheKey = `${comp.city}|${comp.comparison_date}`;
+      let actualTemp = cliCache.get(cacheKey);
       if (actualTemp === undefined) {
-        actualTemp = await getCliMaxTemp(comp.comparison_date);
-        cliCache.set(comp.comparison_date, actualTemp);
+        actualTemp = await getCliMaxTemp(comp.comparison_date, comp.city);
+        cliCache.set(cacheKey, actualTemp);
       }
 
       const marketError = parseFloat(Math.abs(actualTemp - comp.implied_temp).toFixed(2));

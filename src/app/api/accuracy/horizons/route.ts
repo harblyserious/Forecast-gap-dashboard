@@ -8,11 +8,9 @@ import {
 } from "@/lib/database";
 import { impliedTempFromSnapshots } from "@/lib/implied-temp";
 import { hoursToResolution } from "@/lib/resolution-time";
+import { getCityOrDefault } from "@/lib/cities";
 
 export const dynamic = "force-dynamic";
-
-const SERIES = "KXHIGHNY";
-const CITY   = "nyc";
 
 // Horizon buckets: every hour from 48h out to 1h before resolution.
 // A snapshot batch counts toward the horizon it's nearest to (±30 min).
@@ -31,13 +29,14 @@ interface HorizonPoint {
 export async function GET(request: NextRequest) {
   const daysParam = request.nextUrl.searchParams.get("days");
   const days      = daysParam ? Math.min(Math.max(parseInt(daysParam, 10) || 30, 1), 365) : 30;
+  const city      = getCityOrDefault(request.nextUrl.searchParams.get("city"));
 
   try {
     // Ground truth: scored dates and their observed temps (Kalshi/CLI source)
     const scores = await getAccuracyHistory(days);
     const actualByDate = new Map<string, number>();
     for (const s of scores) {
-      if (s.actual_source === "nws_climatological" && s.city === CITY) {
+      if (s.actual_source === "nws_climatological" && s.city === city.key) {
         actualByDate.set(s.resolution_date, s.actual_temp);
       }
     }
@@ -45,8 +44,8 @@ export async function GET(request: NextRequest) {
     if (dates.length === 0) return NextResponse.json({ horizons: [], dates: [] });
 
     const [snapshots, forecasts] = await Promise.all([
-      getAllSnapshotsForDates(SERIES, CITY, dates),
-      getForecastHistoryForDates(CITY, dates),
+      getAllSnapshotsForDates(city.kalshiSeries, city.key, dates),
+      getForecastHistoryForDates(city.key, dates),
     ]);
 
     const forecastsByDate = new Map<string, Forecast[]>();

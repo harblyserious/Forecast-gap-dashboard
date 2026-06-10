@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { CITIES, DEFAULT_CITY } from "@/lib/cities";
 
 const DistributionChart = dynamic(
   () => import("@/components/distribution-chart"),
@@ -131,7 +132,8 @@ function LiveBadge({ isLive, fetchedAt }: { isLive: boolean; fetchedAt: string }
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const [loading,        setLoading]        = useState(true);
+  const [cityKey,        setCityKey]        = useState(DEFAULT_CITY);
+  const [loadedCity,     setLoadedCity]     = useState<string | null>(null);
   const [markets,        setMarkets]        = useState<MarketEvent[]>([]);
   const [forecasts,      setForecasts]      = useState<ForecastRow[]>([]);
   const [scores,         setScores]         = useState<ScoreRow[]>([]);
@@ -140,21 +142,29 @@ export default function Dashboard() {
   const [marketsError,   setMarketsError]   = useState(false);
   const [forecastsError, setForecastsError] = useState(false);
   const [accuracyError,  setAccuracyError]  = useState(false);
+  const [staleData,      setStaleData]      = useState(false);
   const [history,        setHistory]        = useState<HistoryPoint[]>([]);
   const [historyNws,     setHistoryNws]     = useState<number | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const [loadedHistory,  setLoadedHistory]  = useState<string | null>(null);
   const [horizons,       setHorizons]       = useState<HorizonPoint[]>([]);
   const [horizonDays,    setHorizonDays]    = useState(0);
 
+  // Loading flags derived from which request keys have completed — avoids
+  // synchronous setState inside effects (react-hooks/set-state-in-effect)
+  const loading        = loadedCity !== cityKey;
+  const historyKey     = selectedDate ? `${cityKey}|${selectedDate}` : null;
+  const historyLoading = historyKey !== null && loadedHistory !== historyKey;
+
   useEffect(() => {
     Promise.allSettled([
-      fetch("/api/markets/live").then((r)   => r.json()),
-      fetch("/api/forecasts/current").then((r) => r.json()),
-      fetch("/api/accuracy").then((r)       => r.json()),
+      fetch(`/api/markets/live?city=${cityKey}`).then((r)      => r.json()),
+      fetch(`/api/forecasts/current?city=${cityKey}`).then((r) => r.json()),
+      fetch("/api/accuracy").then((r)                          => r.json()),
     ]).then(([mRes, fRes, aRes]) => {
       if (mRes.status === "fulfilled" && !mRes.value?.error) {
         const events: MarketEvent[] = mRes.value.events ?? [];
         setMarkets(events);
+        setMarketsError(false);
         const todayDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
         const preferred = events.find((e) => e.resolutionDate === todayDate)
           ?? events.find((e) => e.resolutionDate > todayDate)
@@ -164,9 +174,15 @@ export default function Dashboard() {
         setMarketsError(true);
       }
       if (fRes.status === "fulfilled" && !fRes.value?.error) {
-        setForecasts(fRes.value.forecasts ?? []);
+        const rows: ForecastRow[] = fRes.value.forecasts ?? [];
+        setForecasts(rows);
+        setForecastsError(false);
+        // Stale data: most recent forecast fetched >48 hours ago
+        const latest = rows.length > 0 ? Math.max(...rows.map((f) => new Date(f.fetchedAt).getTime())) : null;
+        setStaleData(latest !== null && Date.now() - latest > 48 * 60 * 60 * 1000);
       } else {
         setForecastsError(true);
+        setStaleData(false);
       }
       if (aRes.status === "fulfilled" && !aRes.value?.error) {
         setScores(aRes.value.scores ?? []);
@@ -174,10 +190,10 @@ export default function Dashboard() {
       } else {
         setAccuracyError(true);
       }
-      setLoading(false);
+      setLoadedCity(cityKey);
     });
 
-    fetch("/api/accuracy/horizons")
+    fetch(`/api/accuracy/horizons?city=${cityKey}`)
       .then((r) => r.json())
       .then((d) => {
         if (!d?.error) {
@@ -186,13 +202,13 @@ export default function Dashboard() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [cityKey]);
 
   // Implied temp history for the selected date
   useEffect(() => {
     if (!selectedDate) return;
-    setHistoryLoading(true);
-    fetch(`/api/markets/history?date=${selectedDate}`)
+    const key = `${cityKey}|${selectedDate}`;
+    fetch(`/api/markets/history?date=${selectedDate}&city=${cityKey}`)
       .then((r) => r.json())
       .then((d) => {
         if (!d?.error) {
@@ -203,8 +219,8 @@ export default function Dashboard() {
         }
       })
       .catch(() => setHistory([]))
-      .finally(() => setHistoryLoading(false));
-  }, [selectedDate]);
+      .finally(() => setLoadedHistory(key));
+  }, [selectedDate, cityKey]);
 
   const event       = markets.find((e) => e.resolutionDate === selectedDate) ?? null;
   const forecast    = forecasts.find((f) => f.forecastDate === selectedDate) ?? null;
@@ -212,12 +228,6 @@ export default function Dashboard() {
   const nwsTemp     = forecast?.maxTemp24h ?? null;
   const gap         = impliedTemp !== null && nwsTemp !== null
     ? parseFloat((impliedTemp - nwsTemp).toFixed(1)) : null;
-
-  // Stale data: most recent forecast fetched >48 hours ago
-  const staleData = !loading && !forecastsError && forecasts.length > 0 && (() => {
-    const latest = Math.max(...forecasts.map((f) => new Date(f.fetchedAt).getTime()));
-    return Date.now() - latest > 48 * 60 * 60 * 1000;
-  })();
 
   // Late-day: after 5 PM ET the market price may be converging to observed fact
   const lateDay = !loading && isAfter5pmET();
@@ -239,11 +249,23 @@ export default function Dashboard() {
               Forecast Gap Dashboard
             </h1>
             <p className="mt-1 text-sm text-slate-400">
-              NYC prediction markets vs. NWS forecast
+              {CITIES[cityKey].displayName} prediction markets vs. NWS forecast
             </p>
           </div>
           <div className="text-right text-sm text-slate-500">
-            <div className="font-medium text-slate-300">New York City</div>
+            {Object.keys(CITIES).length > 1 ? (
+              <select
+                value={cityKey}
+                onChange={(e) => setCityKey(e.target.value)}
+                className="rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-sm font-medium text-slate-300"
+              >
+                {Object.values(CITIES).map((c) => (
+                  <option key={c.key} value={c.key}>{c.displayName}</option>
+                ))}
+              </select>
+            ) : (
+              <div className="font-medium text-slate-300">{CITIES[cityKey].displayName}</div>
+            )}
             <div>{todayET()}</div>
             <a href="/about" className="mt-1 inline-block text-xs text-violet-400 hover:text-violet-300">
               About & methodology →
@@ -311,7 +333,7 @@ export default function Dashboard() {
                 );
               })()
             }
-            sub={marketsError ? "Could not reach Kalshi" : event ? `KXHIGHNY · ${formatDateShort(event.resolutionDate)}` : undefined}
+            sub={marketsError ? "Could not reach Kalshi" : event ? `${CITIES[cityKey].kalshiSeries} · ${formatDateShort(event.resolutionDate)}` : undefined}
             note={!loading && !marketsError && lateDay ? (
               <p className="mt-1.5 text-xs text-amber-500/80">Market may reflect observed temperature</p>
             ) : undefined}
@@ -545,7 +567,7 @@ export default function Dashboard() {
 
         {/* ── Footer ──────────────────────────────────────────────────────── */}
         <footer className="mt-8 text-center text-xs text-slate-600">
-          Data: Kalshi · NWS/NOAA · Kalshi resolves via NWS CLI Central Park (KNYC)
+          Data: Kalshi · NWS/NOAA · Kalshi resolves via NWS CLI ({CITIES[cityKey].resolutionStation})
         </footer>
 
       </div>

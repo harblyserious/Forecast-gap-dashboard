@@ -2,25 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAllSnapshotsForDates, getForecastHistoryForDates, type MarketSnapshot } from "@/lib/database";
 import { impliedTempFromSnapshots } from "@/lib/implied-temp";
 import { hoursToResolution } from "@/lib/resolution-time";
+import { getCityOrDefault } from "@/lib/cities";
 
 export const dynamic = "force-dynamic";
-
-const SERIES = "KXHIGHNY";
-const CITY   = "nyc";
 
 // Implied temperature per hourly snapshot batch for one resolution date.
 // Powers the "implied temp over time" chart: x = hours to resolution (48→0),
 // y = implied °F, with the NWS forecast as a reference line.
 export async function GET(request: NextRequest) {
   const date = request.nextUrl.searchParams.get("date");
+  const city = getCityOrDefault(request.nextUrl.searchParams.get("city"));
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return NextResponse.json({ error: "date param required (YYYY-MM-DD)" }, { status: 400 });
   }
 
   try {
     const [snapshots, forecasts] = await Promise.all([
-      getAllSnapshotsForDates(SERIES, CITY, [date]),
-      getForecastHistoryForDates(CITY, [date]),
+      getAllSnapshotsForDates(city.kalshiSeries, city.key, [date]),
+      getForecastHistoryForDates(city.key, [date]),
     ]);
 
     // Each cron run shares one fetched_at — group rows into batches

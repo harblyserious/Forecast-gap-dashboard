@@ -2,11 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUpcomingForecasts, insertForecast, type Forecast } from "@/lib/database";
 import { getGridPoint, getForecastHourly } from "@/lib/noaa-client";
 import { computeForecastFields } from "@/lib/pipeline/fetch-forecasts";
+import { getCityOrDefault } from "@/lib/cities";
 
 export const dynamic = "force-dynamic";
-
-const NYC_LAT = 40.7829;
-const NYC_LON = -73.9654;
 
 function addDays(dateStr: string, n: number): string {
   const d = new Date(dateStr + "T12:00:00Z");
@@ -15,11 +13,11 @@ function addDays(dateStr: string, n: number): string {
 }
 
 export async function GET(request: NextRequest) {
-  const city  = (request.nextUrl.searchParams.get("city") ?? "nyc").toLowerCase();
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const city  = getCityOrDefault(request.nextUrl.searchParams.get("city"));
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: city.timeZone });
 
   try {
-    const rows = await getUpcomingForecasts(city, today);
+    const rows = await getUpcomingForecasts(city.key, today);
     const storedDates = new Set(rows.map((r) => r.forecast_date));
 
     // Fetch live NWS data for any upcoming date that isn't in Supabase yet.
@@ -30,7 +28,7 @@ export async function GET(request: NextRequest) {
     if (missing.length > 0) {
       try {
         const fetchedAt = new Date().toISOString();
-        const grid      = await getGridPoint(NYC_LAT, NYC_LON);
+        const grid      = await getGridPoint(city.lat, city.lon);
         const nws       = await getForecastHourly(grid.forecastHourlyUrl);
 
         for (const date of missing) {
@@ -38,7 +36,7 @@ export async function GET(request: NextRequest) {
           if (!fields) continue;
 
           const inserted: Forecast = await insertForecast({
-            city,
+            city:           city.key,
             forecast_date:  date,
             max_temp_24h:   fields.max_temp_24h,
             daytime_high:   fields.daytime_high,

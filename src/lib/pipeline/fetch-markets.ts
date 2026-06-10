@@ -1,6 +1,7 @@
 import { getOpenMarkets } from "../kalshi-client";
 import { getActiveMarkets, type PolymarketEvent } from "../polymarket-client";
 import { insertMarketSnapshot, type InsertMarketSnapshot } from "../database";
+import { CITIES, type CityConfig } from "../cities";
 
 export interface FetchMarketsResult {
   kalshiInserted: number;
@@ -45,8 +46,8 @@ function parsePolymarketBracket(groupItemTitle: string): {
   throw new Error(`Could not parse Polymarket bracket: "${groupItemTitle}"`);
 }
 
-async function fetchKalshi(fetchedAt: string): Promise<number> {
-  const markets = await getOpenMarkets("KXHIGHNY");
+async function fetchKalshi(fetchedAt: string, city: CityConfig): Promise<number> {
+  const markets = await getOpenMarkets(city.kalshiSeries);
   const active  = markets.filter((m) => m.status === "active");
 
   let inserted = 0;
@@ -60,11 +61,11 @@ async function fetchKalshi(fetchedAt: string): Promise<number> {
 
     const row: InsertMarketSnapshot = {
       source:          "kalshi",
-      series_ticker:   "KXHIGHNY",
+      series_ticker:   city.kalshiSeries,
       event_ticker:    m.eventTicker,
       market_ticker:   m.ticker,
       resolution_date: resolutionDate,
-      city:            "nyc",
+      city:            city.key,
       threshold:       m.floorStrike ?? 0,
       strike_type:     (m.strikeType as "greater" | "less" | "between") ?? "greater",
       cap_strike:      m.capStrike,
@@ -121,7 +122,9 @@ export async function runFetchMarkets(): Promise<FetchMarketsResult> {
   const result: FetchMarketsResult = { kalshiInserted: 0, polyInserted: 0 };
 
   try {
-    result.kalshiInserted = await fetchKalshi(fetchedAt);
+    for (const city of Object.values(CITIES)) {
+      result.kalshiInserted += await fetchKalshi(fetchedAt, city);
+    }
   } catch (err) {
     result.kalshiError = (err as Error).message;
   }

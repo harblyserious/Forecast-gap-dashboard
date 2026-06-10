@@ -1,15 +1,12 @@
 import { getGridPoint, getForecastHourly, type ForecastPeriod } from "../noaa-client";
 import { insertForecast, type InsertForecast } from "../database";
 import { supabaseAdmin } from "../supabase";
+import { CITIES, type CityConfig } from "../cities";
 
 export interface FetchForecastsResult {
   inserted: number;
   skipped:  number;
 }
-
-const NYC_LAT = 40.7829;
-const NYC_LON = -73.9654;
-const CITY    = "nyc";
 
 function toEasternDate(isoString: string): string {
   return isoString.slice(0, 10);
@@ -53,12 +50,13 @@ function addDays(dateStr: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-async function getResolutionDates(today: string): Promise<string[]> {
+async function getResolutionDates(today: string, cityKey: string): Promise<string[]> {
   // Look back 25h to catch market snapshots from the daily cron regardless of timing skew
   const since = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabaseAdmin
     .from("market_snapshots")
     .select("resolution_date")
+    .eq("city", cityKey)
     .gte("fetched_at", since);
 
   if (error) throw new Error(`Failed to query market_snapshots: ${error.message}`);
@@ -73,12 +71,12 @@ async function getResolutionDates(today: string): Promise<string[]> {
   return [...dates].sort();
 }
 
-async function forecastAlreadyExists(date: string): Promise<boolean> {
+async function forecastAlreadyExists(date: string, cityKey: string): Promise<boolean> {
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabaseAdmin
     .from("forecasts")
     .select("id")
-    .eq("city", CITY)
+    .eq("city", cityKey)
     .eq("forecast_date", date)
     .gte("fetched_at", twoHoursAgo)
     .limit(1)
@@ -90,19 +88,21 @@ async function forecastAlreadyExists(date: string): Promise<boolean> {
 
 export { computeForecastFields };
 
-export async function runFetchForecasts(): Promise<FetchForecastsResult> {
-  const fetchedAt = new Date().toISOString();
-  const today  = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-  const result: FetchForecastsResult = { inserted: 0, skipped: 0 };
+async function fetchForecastsForCity(
+  city: CityConfig,
+  fetchedAt: string,
+  result: FetchForecastsResult
+): Promise<void> {
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: city.timeZone });
 
-  const dates = await getResolutionDates(today);
-  if (dates.length === 0) return result;
+  const dates = await getResolutionDates(today, city.key);
+  if (dates.length === 0) return;
 
-  const grid     = await getGridPoint(NYC_LAT, NYC_LON);
+  const grid     = await getGridPoint(city.lat, city.lon);
   const forecast = await getForecastHourly(grid.forecastHourlyUrl);
 
   for (const date of dates) {
-    if (await forecastAlreadyExists(date)) {
+    if (await forecastAlreadyExists(date, city.key)) {
       result.skipped++;
       continue;
     }
@@ -114,7 +114,7 @@ export async function runFetchForecasts(): Promise<FetchForecastsResult> {
     }
 
     const row: InsertForecast = {
-      city:           CITY,
+      city:           city.key,
       forecast_date:  date,
       max_temp_24h:   fields.max_temp_24h,
       daytime_high:   fields.daytime_high,
@@ -127,6 +127,15 @@ export async function runFetchForecasts(): Promise<FetchForecastsResult> {
 
     await insertForecast(row);
     result.inserted++;
+  }
+}
+
+export async function runFetchForecasts(): Promise<FetchForecastsResult> {
+  const fetchedAt = new Date().toISOString();
+  const result: FetchForecastsResult = { inserted: 0, skipped: 0 };
+
+  for (const city of Object.values(CITIES)) {
+    await fetchForecastsForCity(city, fetchedAt, result);
   }
 
   return result;

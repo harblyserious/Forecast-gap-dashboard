@@ -1,5 +1,4 @@
-const CLI_BASE =
-  "https://forecast.weather.gov/product.php?site=OKX&product=CLI&issuedby=NYC";
+import { getCity, DEFAULT_CITY } from "../cities";
 
 // CLI is issued twice daily: preliminary ~4 PM ET, final ~1:30 AM ET next day.
 // Version 1 = most recent. Lower version number = later-issued = final report.
@@ -12,8 +11,13 @@ const MONTH_NAMES: Record<string, string> = {
   SEPTEMBER: "09", OCTOBER: "10", NOVEMBER: "11", DECEMBER: "12",
 };
 
-async function fetchCliHtml(version: number): Promise<string> {
-  const url = `${CLI_BASE}&version=${version}`;
+function cliBaseUrl(cityKey: string): string {
+  const city = getCity(cityKey);
+  return `https://forecast.weather.gov/product.php?site=${city.cliSite}&product=CLI&issuedby=${city.cliIssuedBy}`;
+}
+
+async function fetchCliHtml(version: number, cityKey: string): Promise<string> {
+  const url = `${cliBaseUrl(cityKey)}&version=${version}`;
   const delays = [1000, 2000, 4000];
   let lastErr: Error | undefined;
 
@@ -69,9 +73,10 @@ function parseCliReport(html: string): { date: string; maxTemp: number } | null 
  * number vs. the same-day preliminary).
  *
  * @param targetDate - YYYY-MM-DD, must be a past date (CLI not yet issued for today)
+ * @param cityKey - city config key (defaults to nyc); selects CLI site/issuedby
  * @throws if the target date cannot be found within MAX_SCAN_VERSIONS
  */
-export async function getCliMaxTemp(targetDate: string): Promise<number> {
+export async function getCliMaxTemp(targetDate: string, cityKey: string = DEFAULT_CITY): Promise<number> {
   // Days between target date and today (UTC noon to avoid DST edge cases)
   const todayMs = Date.now();
   const targetMs = new Date(targetDate + "T12:00:00Z").getTime();
@@ -82,7 +87,7 @@ export async function getCliMaxTemp(targetDate: string): Promise<number> {
   const endVersion = Math.min(daysBack * 2 + 6, MAX_SCAN_VERSIONS);
 
   for (let version = startVersion; version <= endVersion; version++) {
-    const html = await fetchCliHtml(version);
+    const html = await fetchCliHtml(version, cityKey);
     const parsed = parseCliReport(html);
     if (parsed?.date === targetDate) {
       return parsed.maxTemp;

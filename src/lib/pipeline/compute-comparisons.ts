@@ -54,8 +54,6 @@ async function comparisonAlreadyExists(
   return data !== null;
 }
 
-type StrikeType = "greater" | "less" | "between";
-
 function midpoint(snapshot: MarketSnapshot): number {
   const { strike_type, threshold, cap_strike } = snapshot;
   if (strike_type === "between") return (threshold + cap_strike!) / 2;
