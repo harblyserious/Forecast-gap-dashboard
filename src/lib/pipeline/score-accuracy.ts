@@ -6,6 +6,8 @@ import {
   type InsertAccuracyScore,
 } from "../database";
 import { getCliMaxTemp } from "./fetch-cli-temp";
+import { getCityOrDefault } from "../cities";
+import { resolutionTimeUtc } from "../resolution-time";
 
 export interface ScoreAccuracyResult {
   scored:  number;
@@ -13,19 +15,20 @@ export interface ScoreAccuracyResult {
   errors:  string[];
 }
 
-// KXHIGHNY resolves when the NWS CLI report is issued: ~1:30 AM ET the day
-// after the resolution date. EDT = UTC-4, so ~05:30 UTC on resolution_date+1.
-function estimateClosetimeUtc(resolutionDate: string): Date {
-  const d = new Date(`${resolutionDate}T05:30:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d;
+// Markets resolve when the final NWS CLI report is issued: ~1:30 AM local time
+// the day after the resolution date. Midnight local (end of day) + 1.5 hours,
+// derived per city timezone — NYC ≈ 05:30 UTC, LA/SF ≈ 08:30 UTC.
+function estimateClosetimeUtc(resolutionDate: string, cityKey: string): Date {
+  const tz = getCityOrDefault(cityKey).timeZone;
+  return new Date(resolutionTimeUtc(resolutionDate, tz).getTime() + 1.5 * 3600 * 1000);
 }
 
 // Within a group of comparisons for the same event, return the one whose
 // fetched_at is closest to the 24-hour-before-close mark.
 function selectHorizonComparison(group: Comparison[]): Comparison {
   if (group.length === 1) return group[0];
-  const horizonMs = estimateClosetimeUtc(group[0].comparison_date).getTime() - 24 * 3600 * 1000;
+  const horizonMs =
+    estimateClosetimeUtc(group[0].comparison_date, group[0].city).getTime() - 24 * 3600 * 1000;
   return group.reduce((best, c) => {
     const bestDelta = Math.abs(new Date(best.fetched_at).getTime() - horizonMs);
     const cDelta    = Math.abs(new Date(c.fetched_at).getTime()    - horizonMs);
@@ -34,7 +37,7 @@ function selectHorizonComparison(group: Comparison[]): Comparison {
 }
 
 function computeHorizonHours(comp: Comparison): number {
-  const closeMs   = estimateClosetimeUtc(comp.comparison_date).getTime();
+  const closeMs   = estimateClosetimeUtc(comp.comparison_date, comp.city).getTime();
   const fetchedMs = new Date(comp.fetched_at).getTime();
   return Math.round((closeMs - fetchedMs) / (1000 * 3600));
 }

@@ -66,9 +66,9 @@ function winnerLabel(winner: string) {
 function formatDateShort(iso: string) {
   return new Date(iso + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
-function dateTabLabel(date: string) {
-  const today    = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-  const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+function dateTabLabel(date: string, timeZone: string) {
+  const today    = new Date().toLocaleDateString("en-CA", { timeZone });
+  const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString("en-CA", { timeZone });
   const label    = formatDateShort(date);
   if (date === today)    return `${label} · Today`;
   if (date === tomorrow) return `${label} · Tomorrow`;
@@ -78,13 +78,13 @@ function dateTabLabel(date: string) {
 // first full day 2026-06-06) — past-day views need hourly data to be useful
 const HOURLY_DATA_START = "2026-06-06";
 
-function todayDateET() {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+function todayDateLocal(timeZone: string) {
+  return new Date().toLocaleDateString("en-CA", { timeZone });
 }
 
 // Resolved dates from HOURLY_DATA_START through yesterday, newest first
-function getPastDates(): string[] {
-  const today = todayDateET();
+function getPastDates(timeZone: string): string[] {
+  const today = todayDateLocal(timeZone);
   const out: string[] = [];
   const d = new Date(HOURLY_DATA_START + "T12:00:00Z");
   for (let iso = HOURLY_DATA_START; iso < today; iso = d.toISOString().slice(0, 10)) {
@@ -100,12 +100,13 @@ function formatTimestamp(iso: string) {
     hour12: true, timeZoneName: "short",
   }).format(new Date(iso));
 }
-function todayET() {
-  return new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" });
+function todayLabel(timeZone: string) {
+  return new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone });
 }
-function isAfter5pmET(): boolean {
+// After 5 PM local time the market increasingly reflects the observed high
+function isAfter5pmLocal(timeZone: string): boolean {
   return parseInt(
-    new Date().toLocaleString("en-US", { hour: "2-digit", hour12: false, timeZone: "America/New_York" }),
+    new Date().toLocaleString("en-US", { hour: "2-digit", hour12: false, timeZone }),
     10
   ) >= 17;
 }
@@ -183,13 +184,13 @@ export default function Dashboard() {
     Promise.allSettled([
       fetch(`/api/markets/live?city=${cityKey}`).then((r)      => r.json()),
       fetch(`/api/forecasts/current?city=${cityKey}`).then((r) => r.json()),
-      fetch("/api/accuracy").then((r)                          => r.json()),
+      fetch(`/api/accuracy?city=${cityKey}`).then((r)          => r.json()),
     ]).then(([mRes, fRes, aRes]) => {
       if (mRes.status === "fulfilled" && !mRes.value?.error) {
         const events: MarketEvent[] = mRes.value.events ?? [];
         setMarkets(events);
         setMarketsError(false);
-        const todayDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+        const todayDate = todayDateLocal(CITIES[cityKey].timeZone);
         const preferred = events.find((e) => e.resolutionDate === todayDate)
           ?? events.find((e) => e.resolutionDate > todayDate)
           ?? events[0];
@@ -248,7 +249,7 @@ export default function Dashboard() {
 
   // Final market state for a selected past date (no live market exists)
   useEffect(() => {
-    if (!selectedDate || selectedDate >= todayDateET()) return;
+    if (!selectedDate || selectedDate >= todayDateLocal(CITIES[cityKey].timeZone)) return;
     const date = selectedDate;
     fetch(`/api/markets/live?city=${cityKey}&date=${date}`)
       .then((r) => r.json())
@@ -260,8 +261,9 @@ export default function Dashboard() {
   }, [selectedDate, cityKey]);
 
   // Past-day navigation: resolved dates selectable from the dropdown
-  const pastDates      = getPastDates();
-  const isPastSelected = selectedDate !== null && selectedDate < todayDateET();
+  const cityTz         = CITIES[cityKey].timeZone;
+  const pastDates      = getPastDates(cityTz);
+  const isPastSelected = selectedDate !== null && selectedDate < todayDateLocal(cityTz);
   const selectedScore  = isPastSelected ? scores.find((s) => s.date === selectedDate) ?? null : null;
   const pastEvent      = isPastSelected && pastResolved?.date === selectedDate ? pastResolved.event : null;
   const pastLoading    = isPastSelected && pastResolved?.date !== selectedDate;
@@ -275,7 +277,7 @@ export default function Dashboard() {
     ? parseFloat((impliedTemp - nwsTemp).toFixed(1)) : null;
 
   // Late-day: after 5 PM ET the market price may be converging to observed fact
-  const lateDay = !loading && isAfter5pmET();
+  const lateDay = !loading && isAfter5pmLocal(cityTz);
 
   // Tail bucket: any single bucket holds >50% of normalized probability
   const hasTailBucket = !loading && event !== null && (() => {
@@ -311,7 +313,7 @@ export default function Dashboard() {
             ) : (
               <div className="font-medium text-slate-300">{CITIES[cityKey].displayName}</div>
             )}
-            <div>{todayET()}</div>
+            <div>{todayLabel(cityTz)}</div>
             <a href="/about" className="mt-1 inline-block text-xs text-violet-400 hover:text-violet-300">
               About & methodology →
             </a>
@@ -338,7 +340,7 @@ export default function Dashboard() {
                     : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
                 }`}
               >
-                {dateTabLabel(e.resolutionDate)}
+                {dateTabLabel(e.resolutionDate, cityTz)}
               </button>
             ))}
             {pastDates.length > 0 && (

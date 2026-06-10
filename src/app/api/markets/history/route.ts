@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     const points = [...batches.entries()]
       .map(([fetchedAt, buckets]) => ({
         fetchedAt,
-        hoursToResolution: parseFloat(hoursToResolution(date, fetchedAt).toFixed(2)),
+        hoursToResolution: parseFloat(hoursToResolution(date, fetchedAt, city.timeZone).toFixed(2)),
         impliedTemp: impliedTempFromSnapshots(buckets),
       }))
       .filter((p) => p.impliedTemp > 0 && p.hoursToResolution >= 0)

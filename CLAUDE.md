@@ -362,6 +362,14 @@ Three angles:
 - Discovered Polymarket tag_slug=temperature breakage (see API notes); Polymarket panel deferred
 - New react-hooks lint rules (purity/set-state-in-effect) enforced: loading flags now derived from request-key state, no sync setState in effects
 
+### 2026-06-10 — Multi-city expansion
+- Timezone fixes first: resolution-time.ts and page.tsx date helpers (todayDateLocal, dateTabLabel, 5pm check, header date) now take an IANA timeZone; score-accuracy close-time estimate derives per-city (midnight local + 1.5h CLI issuance) instead of hardcoded 05:30Z
+- score-accuracy cron moved 8am → 10am UTC for Pacific-city CLI timing
+- Added 5 cities to cities.ts: chi (KXHIGHCHI/KMDW Midway), lax (KXHIGHLAX/KLAX), mia (KXHIGHMIA/KMIA), sfo (KXHIGHTSFO/KSFO — note extra T in ticker), den (KXHIGHDEN/KDEN). All settlement stations verified against Kalshi settlement_sources + live CLI reports. Dead legacy tickers: HIGHCHI, HIGHMIA, KXDENHIGH (0 open markets)
+- /api/accuracy now city-filtered (?city=) — scoreboard/table would otherwise mix cities once new cities score
+- About page notes airport stations (Midway, LAX, SFO) vs city centers
+- City selector now visible (6 cities); new cities' market_snapshots start accumulating on next hourly cron; first accuracy scores ~2 days later
+
 ## Database Schema
 
 ### market_snapshots
@@ -499,7 +507,7 @@ Kalshi opens contracts or how far NWS forecasts extend.
 - fetch-markets: every hour (0 * * * *) — hourly snapshots enable multi-horizon accuracy tracking
 - fetch-forecasts: 6:30am UTC daily (NWS updates slowly; daily fetch is sufficient)
 - compute-comparisons: 7am UTC daily
-- score-accuracy: 8am UTC daily (after final CLI report issues at ~5:30am UTC)
+- score-accuracy: 10am UTC daily (moved from 8am 2026-06-10 — Pacific-city final CLI reports issue ~1:30am Pacific = 8:30–9:30 UTC)
 
 ## Methodology Notes
 

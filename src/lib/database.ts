@@ -319,19 +319,21 @@ export async function getUpcomingForecasts(city: string, today: string): Promise
   return [...seen.values()];
 }
 
-// Returns accuracy_scores for the last N days, ordered newest-first.
-// Used by /api/accuracy.
-export async function getAccuracyHistory(days: number): Promise<AccuracyScore[]> {
+// Returns accuracy_scores for the last N days, ordered newest-first,
+// optionally filtered to one city. Used by /api/accuracy.
+export async function getAccuracyHistory(days: number, city?: string): Promise<AccuracyScore[]> {
   const since = new Date();
   since.setDate(since.getDate() - days);
   const sinceDate = since.toISOString().slice(0, 10);
 
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("accuracy_scores")
     .select("*")
     .gte("resolution_date", sinceDate)
     .order("resolution_date", { ascending: false });
+  if (city) query = query.eq("city", city);
 
+  const { data, error } = await query;
   if (error) throw new Error(`getAccuracyHistory: ${error.message}`);
   return (data ?? []) as AccuracyScore[];
 }

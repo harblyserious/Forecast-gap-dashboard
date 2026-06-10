@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Ground truth: scored dates and their observed temps (Kalshi/CLI source)
-    const scores = await getAccuracyHistory(days);
+    const scores = await getAccuracyHistory(days, city.key);
     const actualByDate = new Map<string, number>();
     for (const s of scores) {
       if (s.actual_source === "nws_climatological" && s.city === city.key) {
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
       // Pick nearest batch per horizon (within ±30 min)
       const batchList = [...batches.entries()].map(([fetchedAt, buckets]) => ({
         fetchedAt,
-        hours: hoursToResolution(date, fetchedAt),
+        hours: hoursToResolution(date, fetchedAt, city.timeZone),
         buckets,
       }));
 

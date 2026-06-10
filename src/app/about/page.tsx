@@ -131,6 +131,14 @@ export default function AboutPage() {
               observations via the NWS Daily Climate Report.
             </li>
             <li>
+              Other cities measure at the station named in each market&apos;s settlement rules,
+              which is often an airport rather than the city center:{" "}
+              <span className="text-slate-200">Chicago at Midway (KMDW)</span>, and{" "}
+              <span className="text-slate-200">Los Angeles and San Francisco at the LAX and SFO
+              airports</span> respectively. Airport readings can differ noticeably from downtown
+              temperatures (LAX, for example, runs cooler than downtown LA due to the marine layer).
+            </li>
+            <li>
               Polymarket&apos;s NYC markets (planned addition) resolve against{" "}
               <span className="text-slate-200">Weather Underground at LaGuardia (KLGA)</span> — a
               different station that can read a few degrees differently. Accuracy scoring always

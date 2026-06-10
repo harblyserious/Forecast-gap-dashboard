@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/cron/score-accuracy",
-      "schedule": "0 8 * * *"
+      "schedule": "0 10 * * *"
     }
   ]
 }

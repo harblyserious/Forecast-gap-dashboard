@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccuracyHistory } from "@/lib/database";
+import { getCityOrDefault } from "@/lib/cities";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const daysParam = request.nextUrl.searchParams.get("days");
   const days      = daysParam ? Math.min(Math.max(parseInt(daysParam, 10) || 30, 1), 365) : 30;
+  const city      = getCityOrDefault(request.nextUrl.searchParams.get("city"));
 
   try {
-    const rows = await getAccuracyHistory(days);
+    const rows = await getAccuracyHistory(days, city.key);
 
     const scores = rows.map((r) => ({
       date:        r.resolution_date,
