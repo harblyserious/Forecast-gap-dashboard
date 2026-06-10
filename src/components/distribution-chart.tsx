@@ -38,9 +38,10 @@ function nwsMidpoint(b: Bucket): number {
 
 // ─── Build chart data ─────────────────────────────────────────────────────────
 
-// Buckets priced at >=99% or <=1% are not interesting and clutter the view.
-// Keep the contiguous span from the first to the last "interesting" bucket
-// (plus the bucket containing the NWS temp) so the axis stays coherent.
+// Buckets priced at <=1% are clutter — but a dominant (>=99%) bucket carries
+// the whole distribution and must stay visible. Keep the contiguous span from
+// the first to the last bucket with real probability (plus the bucket
+// containing the NWS temp) so the axis stays coherent.
 function filterDisplayBuckets(sorted: Bucket[], nwsTemp: number | null): Bucket[] {
   const containsNws = (b: Bucket) => {
     if (nwsTemp === null) return false;
@@ -48,7 +49,7 @@ function filterDisplayBuckets(sorted: Bucket[], nwsTemp: number | null): Bucket[
     if (b.strikeType === "greater") return nwsTemp > b.threshold;
     return nwsTemp >= b.threshold && nwsTemp <= (b.capStrike ?? b.threshold);
   };
-  const interesting = sorted.map((b) => (b.yesBid > 0.01 && b.yesBid < 0.99) || containsNws(b));
+  const interesting = sorted.map((b) => b.yesBid > 0.01 || containsNws(b));
   const first = interesting.indexOf(true);
   if (first === -1) return sorted;
   const last = interesting.lastIndexOf(true);
