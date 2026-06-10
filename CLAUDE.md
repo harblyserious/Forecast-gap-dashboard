@@ -65,7 +65,9 @@ historical accuracy.
 - **Validation:** Before building the scoring pipeline, cross-check KNYC observations against the published CLI report for 3–4 dates to confirm they match exactly
 
 ### Polymarket
-- Use `/events?tag_slug=temperature` (NOT `/markets` or `tag_slug=weather`)
+- **BREAKING (discovered 2026-06-10):** `tag_slug=temperature` now returns 0 events — the tag was replaced by `daily-temperature`. Query by series instead: `/events?series_slug=nyc-daily-weather&closed=false` (confirmed working, returns active events). The fetch-markets Polymarket path has inserted 0 rows since the tag change — fix when resuming Polymarket work.
+- Bracket title format (live 2026-06): `"71°F or below"`, `"72-73°F"`, `"90°F or higher"` — the parser in fetch-markets expects `<`/`≥`/`64–65` formats and will NOT match these; needs updating.
+- ~~Use `/events?tag_slug=temperature` (NOT `/markets` or `tag_slug=weather`)~~ (obsolete, see above)
 - NYC daily weather series: `seriesSlug` = `"nyc-daily-weather"`
 - `outcomePrices` is a JSON string — must be parsed with `JSON.parse()`
 - Resolves via Weather Underground (KLGA), NOT NOAA
@@ -156,9 +158,10 @@ historical accuracy.
 - Resolves via **Weather Underground (KLGA)** — Kalshi resolves via **Central Park**, may differ by a few degrees
 
 ## Current Status
-- Phase: Phase 4 — Polish, Custom Domain, Vercel Pro Upgrade
-- Last completed: Phase 3 — Full dashboard with accuracy scoring, distribution chart, and polish/QA
-- Next milestone: Vercel Pro upgrade (hourly crons), custom domain, multi-horizon accuracy chart
+- Phase: Phase 4 — code-side work complete (2026-06-10)
+- Done: Vercel Pro + hourly crons, multi-horizon accuracy chart, implied-temp-over-time chart, About page, SEO/OG, Vercel Analytics, city config refactor, UI backlog
+- Deferred: Polymarket panel (see Polymarket API notes — tag/parser changes needed first)
+- Blocked on user: custom domain (choose + attach in Vercel dashboard), enable Web Analytics in Vercel project settings
 
 ## Matching Logic
 
@@ -343,6 +346,20 @@ Three angles:
 - Upgraded to Vercel Pro, switched fetch-markets to hourly crons. Multi-horizon accuracy data collection begins now.
 - fetch-forecasts, compute-comparisons, and score-accuracy remain daily
 - market_snapshots confirmed append-only with no unique constraints — hourly inserts are safe
+
+### 2026-06-10 — Phase 4 (code-side complete)
+- SEO: metadataBase (NEXT_PUBLIC_SITE_URL env, falls back to vercel.app URL), OpenGraph/Twitter cards, build-time OG image via next/og
+- Vercel Analytics installed (@vercel/analytics) — user must enable Web Analytics in Vercel project settings
+- /about methodology page: data sources, implied temp calc, gap definition, scoring horizon, resolution source caveats
+- UI backlog done: <=1% buckets filtered from distribution chart display (dominant >=99% buckets kept — they carry the answer; implied temp still uses all buckets), buckets sorted by temperature in API
+- Implied Temperature Over Time chart: /api/markets/history?date= computes implied temp per hourly snapshot batch; SVG line chart with NWS reference line, x-axis hours-to-resolution 48→0
+- Multi-horizon accuracy chart: /api/accuracy/horizons computes MAE per horizon hour (48→1) on the fly from market_snapshots + accuracy_scores actuals; NWS error uses the forecast current at each snapshot time; no schema change needed
+- Early multi-horizon signal (4 days hourly data): market MAE shrinks 3.4°F@38h → 1.1°F@1h while NWS stays ~3.5-5°F — the expected convergence pattern
+- New shared libs: cities.ts (city config), resolution-time.ts (midnight-ET resolution instant, DST-aware), implied-temp.ts (bucket-weighted estimate)
+- City config refactor: src/lib/cities.ts is the single source of truth; pipelines loop over CITIES, API routes take ?city=, frontend selector auto-appears at 2+ entries. Adding a city = one config entry.
+- Database reads that touch hourly snapshots now paginate past Supabase's 1000-row default cap (getAllSnapshotsForDates)
+- Discovered Polymarket tag_slug=temperature breakage (see API notes); Polymarket panel deferred
+- New react-hooks lint rules (purity/set-state-in-effect) enforced: loading flags now derived from request-key state, no sync setState in effects
 
 ## Database Schema
 
@@ -554,5 +571,5 @@ Before adding any new cities, refactor city/series configuration into a single c
 
 ## UI Improvements Backlog
 
-- Filter out Kalshi markets where probability is 99%+ or 1% or less (not interesting, clutters view)
-- Sort Kalshi markets by temperature threshold in logical order (highest to lowest)
+- ~~Filter out Kalshi markets where probability is 99%+ or 1% or less~~ Done 2026-06-10: <=1% buckets hidden from chart; >=99% buckets intentionally KEPT (a dominant bucket carries the distribution — hiding it left an empty chart)
+- ~~Sort Kalshi markets by temperature threshold in logical order~~ Done 2026-06-10 (API returns buckets highest-first)
