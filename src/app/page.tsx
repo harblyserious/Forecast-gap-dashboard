@@ -74,6 +74,26 @@ function dateTabLabel(date: string) {
   if (date === tomorrow) return `${label} · Tomorrow`;
   return label;
 }
+// First day with hourly snapshot coverage (hourly crons enabled 2026-06-05,
+// first full day 2026-06-06) — past-day views need hourly data to be useful
+const HOURLY_DATA_START = "2026-06-06";
+
+function todayDateET() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
+// Resolved dates from HOURLY_DATA_START through yesterday, newest first
+function getPastDates(): string[] {
+  const today = todayDateET();
+  const out: string[] = [];
+  const d = new Date(HOURLY_DATA_START + "T12:00:00Z");
+  for (let iso = HOURLY_DATA_START; iso < today; iso = d.toISOString().slice(0, 10)) {
+    out.push(iso);
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return out.reverse();
+}
+
 function formatTimestamp(iso: string) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
@@ -148,6 +168,7 @@ export default function Dashboard() {
   const [loadedHistory,  setLoadedHistory]  = useState<string | null>(null);
   const [horizons,       setHorizons]       = useState<HorizonPoint[]>([]);
   const [horizonDays,    setHorizonDays]    = useState(0);
+  const [pastOpen,       setPastOpen]       = useState(false);
 
   // Loading flags derived from which request keys have completed — avoids
   // synchronous setState inside effects (react-hooks/set-state-in-effect)
@@ -224,6 +245,11 @@ export default function Dashboard() {
 
   const event       = markets.find((e) => e.resolutionDate === selectedDate) ?? null;
   const forecast    = forecasts.find((f) => f.forecastDate === selectedDate) ?? null;
+
+  // Past-day navigation: resolved dates selectable from the dropdown
+  const pastDates      = getPastDates();
+  const isPastSelected = selectedDate !== null && selectedDate < todayDateET();
+  const selectedScore  = isPastSelected ? scores.find((s) => s.date === selectedDate) ?? null : null;
   const impliedTemp = event?.impliedTemp ?? null;
   const nwsTemp     = forecast?.maxTemp24h ?? null;
   const gap         = impliedTemp !== null && nwsTemp !== null
@@ -280,10 +306,10 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ── Date tabs ───────────────────────────────────────────────────── */}
-        {markets.length > 1 && (
-          <div className="mb-6 flex gap-2">
-            {markets.map((e) => (
+        {/* ── Date tabs + past days dropdown ──────────────────────────────── */}
+        {(markets.length > 1 || pastDates.length > 0) && (
+          <div className="mb-6 flex flex-wrap items-center gap-2">
+            {markets.length > 1 && markets.map((e) => (
               <button
                 key={e.resolutionDate}
                 onClick={() => setSelectedDate(e.resolutionDate)}
@@ -296,6 +322,53 @@ export default function Dashboard() {
                 {dateTabLabel(e.resolutionDate)}
               </button>
             ))}
+            {pastDates.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setPastOpen((o) => !o)}
+                  className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                    isPastSelected
+                      ? "bg-violet-600 text-white"
+                      : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+                  }`}
+                >
+                  {isPastSelected ? formatDateShort(selectedDate!) : "Past Days"}
+                  <span className="ml-1.5 text-xs">▾</span>
+                </button>
+                {pastOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setPastOpen(false)} />
+                    <div className="absolute left-0 top-full z-20 mt-1 max-h-64 w-36 overflow-y-auto rounded-lg border border-slate-700 bg-slate-800 py-1 shadow-xl">
+                      {pastDates.map((d) => (
+                        <button
+                          key={d}
+                          onClick={() => { setSelectedDate(d); setPastOpen(false); }}
+                          className={`block w-full px-4 py-1.5 text-left text-sm transition-colors ${
+                            selectedDate === d
+                              ? "bg-violet-600 text-white"
+                              : "text-slate-300 hover:bg-slate-700"
+                          }`}
+                        >
+                          {formatDateShort(d)}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Resolved badge for past dates ───────────────────────────────── */}
+        {selectedScore && (
+          <div className="-mt-2 mb-6 flex items-center gap-2 text-sm">
+            <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-400">
+              Resolved
+            </span>
+            <span className="text-slate-400">
+              Actual: <span className="font-semibold tabular-nums text-slate-200">{selectedScore.actualTemp}°F</span>
+            </span>
           </div>
         )}
 
@@ -334,7 +407,7 @@ export default function Dashboard() {
               })()
             }
             sub={marketsError ? "Could not reach Kalshi" : event ? `${CITIES[cityKey].kalshiSeries} · ${formatDateShort(event.resolutionDate)}` : undefined}
-            note={!loading && !marketsError && lateDay ? (
+            note={!loading && !marketsError && lateDay && !isPastSelected ? (
               <p className="mt-1.5 text-xs text-amber-500/80">Market may reflect observed temperature</p>
             ) : undefined}
           />
