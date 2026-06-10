@@ -206,6 +206,9 @@ export default function Dashboard() {
           <div className="text-right text-sm text-slate-500">
             <div className="font-medium text-slate-300">New York City</div>
             <div>{todayET()}</div>
+            <a href="/about" className="mt-1 inline-block text-xs text-violet-400 hover:text-violet-300">
+              About & methodology →
+            </a>
           </div>
         </header>
 
