@@ -38,16 +38,42 @@ function nwsMidpoint(b: Bucket): number {
 
 // ─── Build chart data ─────────────────────────────────────────────────────────
 
+// Buckets priced at >=99% or <=1% are not interesting and clutter the view.
+// Keep the contiguous span from the first to the last "interesting" bucket
+// (plus the bucket containing the NWS temp) so the axis stays coherent.
+function filterDisplayBuckets(sorted: Bucket[], nwsTemp: number | null): Bucket[] {
+  const containsNws = (b: Bucket) => {
+    if (nwsTemp === null) return false;
+    if (b.strikeType === "less")    return nwsTemp < (b.capStrike ?? Infinity);
+    if (b.strikeType === "greater") return nwsTemp > b.threshold;
+    return nwsTemp >= b.threshold && nwsTemp <= (b.capStrike ?? b.threshold);
+  };
+  const interesting = sorted.map((b) => (b.yesBid > 0.01 && b.yesBid < 0.99) || containsNws(b));
+  const first = interesting.indexOf(true);
+  if (first === -1) return sorted;
+  const last = interesting.lastIndexOf(true);
+  // Pad one bucket each side for context
+  return sorted.slice(Math.max(0, first - 1), Math.min(sorted.length, last + 2));
+}
+
 function buildChartData(buckets: Bucket[], nwsTemp: number | null): ChartPoint[] {
-  const sorted = [...buckets].sort((a, b) => a.midpoint - b.midpoint);
-  const totalKalshi = sorted.reduce((s, b) => s + b.yesBid, 0);
+  const all    = [...buckets].sort((a, b) => a.midpoint - b.midpoint);
+  const sorted = filterDisplayBuckets(all, nwsTemp);
+  // Normalize against ALL buckets so displayed probabilities stay truthful
+  const totalKalshi = all.reduce((s, b) => s + b.yesBid, 0);
 
   let nwsNorm: (number | null)[] = sorted.map(() => null);
   if (nwsTemp !== null) {
-    const sigma = 3;
-    const raw   = sorted.map((b) => normalPdf(nwsMidpoint(b), nwsTemp, sigma));
-    const total = raw.reduce((s, p) => s + p, 0);
-    nwsNorm     = total > 0 ? raw.map((p) => Math.round((p / total) * 1000) / 10) : nwsNorm;
+    const sigma  = 3;
+    // Normalize the curve over ALL buckets, then display the visible subset
+    const rawAll = all.map((b) => normalPdf(nwsMidpoint(b), nwsTemp, sigma));
+    const total  = rawAll.reduce((s, p) => s + p, 0);
+    if (total > 0) {
+      nwsNorm = sorted.map((b) => {
+        const p = rawAll[all.indexOf(b)];
+        return Math.round((p / total) * 1000) / 10;
+      });
+    }
   }
 
   return sorted.map((b, i) => {

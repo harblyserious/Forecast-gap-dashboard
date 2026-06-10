@@ -36,6 +36,11 @@ function bucketMidpoint(strikeType: string, threshold: number, capStrike: number
   return (capStrike ?? 0) - 3; // 'less': open lower tail
 }
 
+// Logical display order: highest temperature bucket first
+function sortBuckets(buckets: Bucket[]): Bucket[] {
+  return [...buckets].sort((a, b) => b.midpoint - a.midpoint);
+}
+
 function computeImpliedTemp(buckets: Bucket[]): number {
   const total = buckets.reduce((s, b) => s + b.yesBid, 0);
   if (total === 0) return 0;
@@ -103,7 +108,7 @@ async function fetchLiveEvents(): Promise<MarketEvent[]> {
     events.push({
       resolutionDate,
       impliedTemp:         computeImpliedTemp(buckets),
-      buckets,
+      buckets:             sortBuckets(buckets),
       source:              "live",
       fetchedAt,
       snapshotImpliedTemp: null,
@@ -150,7 +155,7 @@ async function fetchCachedEvents(today: string): Promise<MarketEvent[]> {
     events.push({
       resolutionDate,
       impliedTemp:         computeImpliedTemp(buckets),
-      buckets,
+      buckets:             sortBuckets(buckets),
       source:              "cached",
       fetchedAt,
       snapshotImpliedTemp: null,
