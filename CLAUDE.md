@@ -158,11 +158,12 @@ historical accuracy.
 - Resolves via **Weather Underground (KLGA)** — Kalshi resolves via **Central Park**, may differ by a few degrees
 
 ## Current Status
-- Phase: Phase 4 — code-side work complete (2026-06-10)
-- Done: Vercel Pro + hourly crons, multi-horizon accuracy chart, implied-temp-over-time chart, About page, SEO/OG, Vercel Analytics, city config refactor, UI backlog
-- Deferred: Polymarket panel (see Polymarket API notes — tag/parser changes needed first)
-- Custom domain: aporetic.app (primary) + aporetic.com (redirect), purchased via Squarespace 2026-06; site URL fallback updated in layout.tsx — set NEXT_PUBLIC_SITE_URL=https://aporetic.app in Vercel env as well
-- Blocked on user: enable Web Analytics in Vercel project settings
+- Phase: Post Phase 4 — monitoring, data accumulation, pre-launch
+- Last completed: Full Phase 4 including multi-city, rebrand, domain, NWS 3-hour updates
+- Currently working on: Letting data accumulate across 6 cities before public launch (target: ~Jun 17)
+- Next milestone: Public launch — HN, Reddit, Twitter/X, LinkedIn
+- Still deferred: Polymarket panel (see Polymarket API notes — tag/parser changes needed first)
+- Reminder: enable Web Analytics in Vercel project settings if not done yet
 
 ## Matching Logic
 
@@ -369,6 +370,18 @@ Three angles:
 - /api/accuracy now city-filtered (?city=) — scoreboard/table would otherwise mix cities once new cities score
 - About page notes airport stations (Midway, LAX, SFO) vs city centers
 - City selector now visible (6 cities); new cities' market_snapshots start accumulating on next hourly cron; first accuracy scores ~2 days later
+
+### 2026-06-10 (end of day) — Phase 4 complete
+- Phase 4 complete: multi-city support added (Chicago, LA, Miami, SF, Denver), all timezone-aware (resolution times, date helpers, scoring close-time estimates per city)
+- Site rebranded to "Aporetic · Measuring the prediction market gap" with "Markets vs. Meteorologists" subtitle
+- Custom domain live: aporetic.app (primary), aporetic.com redirects to it (Squarespace DNS → Vercel)
+- NWS forecasts now update every 3 hours (forecasts table stays append-only — see schema note); last-updated label added to forecast card in city-local time
+- Historical date navigation added via Past Days dropdown (back to Jun 6, first hourly data date); past dates show final resolved market state from latest snapshot batch + "Resolved · Actual" badge
+- Fixed: NWS curve normalization over all buckets, late-day warning condition (today-only, city-local 5 PM), snapshot timestamp timezone (city-local, not browser-local)
+- Kalshi implied card now shows both live price and earliest-snapshot anchor with correct city-local timestamps
+- Vercel Pro active; hourly crons running since Jun 5 — NYC hourly data complete from Jun 6, the 5 new cities accumulate from Jun 10 (added to config today)
+- Score-accuracy cron moved to 10 AM UTC for Pacific city CLI report timing
+- /api/accuracy now city-filtered to keep scoreboard/table per-city as new cities start scoring
 
 ## Database Schema
 
