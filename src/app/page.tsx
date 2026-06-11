@@ -94,10 +94,12 @@ function getPastDates(timeZone: string): string[] {
   return out.reverse();
 }
 
-function formatTimestamp(iso: string) {
+// Always rendered in the selected city's timezone (matching the NWS "Updated"
+// label) — browser-local time is ambiguous when viewing another city's market
+function formatTimestamp(iso: string, timeZone: string) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
-    hour12: true, timeZoneName: "short",
+    hour12: true, timeZoneName: "short", timeZone,
   }).format(new Date(iso));
 }
 // "2:30 PM PDT" in the city's timezone. Includes the fetch date ("Jun 10,
@@ -148,7 +150,7 @@ function SummaryCard({ label, value, sub, note, badge, className = "" }: {
   );
 }
 
-function LiveBadge({ isLive, fetchedAt }: { isLive: boolean; fetchedAt: string }) {
+function LiveBadge({ isLive, fetchedAt, timeZone }: { isLive: boolean; fetchedAt: string; timeZone: string }) {
   if (isLive) {
     return (
       <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-400">
@@ -159,7 +161,7 @@ function LiveBadge({ isLive, fetchedAt }: { isLive: boolean; fetchedAt: string }
   }
   return (
     <span className="rounded-full bg-amber-600/15 px-2 py-0.5 text-xs font-semibold text-amber-400">
-      As of {formatTimestamp(fetchedAt)}
+      As of {formatTimestamp(fetchedAt, timeZone)}
     </span>
   );
 }
@@ -421,7 +423,7 @@ export default function Dashboard() {
             className="border-violet-500/20"
             badge={
               loading || pastLoading || !event ? undefined :
-              <LiveBadge isLive={event.source === "live"} fetchedAt={event.fetchedAt} />
+              <LiveBadge isLive={event.source === "live"} fetchedAt={event.fetchedAt} timeZone={cityTz} />
             }
             value={
               loading || pastLoading ? <Skeleton className="h-9 w-28" /> :
@@ -439,7 +441,7 @@ export default function Dashboard() {
                       <span className="text-sm font-semibold text-slate-500 tabular-nums">
                         {`${snap!.toFixed(1)}°F`}
                         <span className="ml-1.5 text-xs font-normal text-slate-600">
-                          as of {formatTimestamp(snapAt!)}
+                          as of {formatTimestamp(snapAt!, cityTz)}
                         </span>
                       </span>
                     )}
