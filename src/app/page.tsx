@@ -100,6 +100,18 @@ function formatTimestamp(iso: string) {
     hour12: true, timeZoneName: "short",
   }).format(new Date(iso));
 }
+// "2:30 PM PDT" in the city's timezone; prefixed with the date when the
+// fetch wasn't today so an old timestamp can't read as fresh
+function formatUpdatedTime(iso: string, timeZone: string) {
+  const d = new Date(iso);
+  const time = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric", minute: "2-digit", hour12: true, timeZoneName: "short", timeZone,
+  }).format(d);
+  const fetchedDay = d.toLocaleDateString("en-CA", { timeZone });
+  if (fetchedDay === todayDateLocal(timeZone)) return time;
+  return `${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone }).format(d)}, ${time}`;
+}
+
 function todayLabel(timeZone: string) {
   return new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone });
 }
@@ -454,7 +466,7 @@ export default function Dashboard() {
             }
             sub={
               forecastsError ? "Could not reach NWS" :
-              forecast ? `24hr max · ${formatDateShort(forecast.forecastDate)} · ${forecast.shortForecast ?? ""}` :
+              forecast ? `24hr max · ${formatDateShort(forecast.forecastDate)} · ${forecast.shortForecast ?? ""} · Updated ${formatUpdatedTime(forecast.fetchedAt, cityTz)}` :
               undefined
             }
           />

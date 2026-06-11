@@ -411,6 +411,20 @@ Midpoint calculation:
 Stores NWS forecast data for a city and date at the time of fetch.
 One row per city per forecast_date per fetch cycle. Never updated — only inserted.
 
+**Do NOT convert to upsert (considered + rejected 2026-06-10):** the multi-horizon
+accuracy chart's NWS-error line depends on this history — it picks the forecast
+that was *current at each market snapshot's fetch time* (getForecastHistoryForDates).
+Upserting would collapse each date to its final forecast (nearly an observation by
+end of day) and make NWS error look artificially low at every horizon. Volume is
+negligible (~8 rows/day/city/date at the 3-hour cadence).
+
+**Display vs. scoring anchor:** the dashboard's NWS card shows the *latest*
+3-hourly fetch (with an "Updated [time]" label in the city's timezone), while
+accuracy scoring uses the forecast that was current when compute-comparisons ran
+(7am UTC, i.e. the 6am fetch) — so the displayed forecast may differ from the
+value a day is later scored against. This is intentional: scoring stays anchored
+to a fixed early-morning horizon; the display stays fresh.
+
 Fields:
 - id: uuid, primary key, auto-generated
 - city: text — e.g. 'nyc'
@@ -505,7 +519,7 @@ Kalshi opens contracts or how far NWS forecasts extend.
 
 ### Cron Schedule (Current — Vercel Pro)
 - fetch-markets: every hour (0 * * * *) — hourly snapshots enable multi-horizon accuracy tracking
-- fetch-forecasts: 6:30am UTC daily (NWS updates slowly; daily fetch is sufficient)
+- fetch-forecasts: every 3 hours (0 */3 * * *) — changed from daily 2026-06-10; keeps the dashboard's NWS card current through the day
 - compute-comparisons: 7am UTC daily
 - score-accuracy: 10am UTC daily (moved from 8am 2026-06-10 — Pacific-city final CLI reports issue ~1:30am Pacific = 8:30–9:30 UTC)
 
