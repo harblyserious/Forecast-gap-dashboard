@@ -100,15 +100,17 @@ function formatTimestamp(iso: string) {
     hour12: true, timeZoneName: "short",
   }).format(new Date(iso));
 }
-// "2:30 PM PDT" in the city's timezone; prefixed with the date when the
-// fetch wasn't today so an old timestamp can't read as fresh
-function formatUpdatedTime(iso: string, timeZone: string) {
+// "2:30 PM PDT" in the city's timezone. Includes the fetch date ("Jun 10,
+// 2:30 PM PDT") whenever the fetch day differs from the forecast date being
+// viewed (e.g. tomorrow's forecast fetched today) or from today (stale fetch)
+// — time-only is unambiguous only when both are today.
+function formatUpdatedTime(iso: string, timeZone: string, forecastDate: string) {
   const d = new Date(iso);
   const time = new Intl.DateTimeFormat("en-US", {
     hour: "numeric", minute: "2-digit", hour12: true, timeZoneName: "short", timeZone,
   }).format(d);
   const fetchedDay = d.toLocaleDateString("en-CA", { timeZone });
-  if (fetchedDay === todayDateLocal(timeZone)) return time;
+  if (fetchedDay === forecastDate && fetchedDay === todayDateLocal(timeZone)) return time;
   return `${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone }).format(d)}, ${time}`;
 }
 
@@ -288,8 +290,10 @@ export default function Dashboard() {
   const gap         = impliedTemp !== null && nwsTemp !== null
     ? parseFloat((impliedTemp - nwsTemp).toFixed(1)) : null;
 
-  // Late-day: after 5 PM ET the market price may be converging to observed fact
-  const lateDay = !loading && isAfter5pmLocal(cityTz);
+  // Late-day: only meaningful when viewing TODAY after 5 PM city-local time —
+  // tomorrow's market is still a genuine forecast and past dates are settled
+  const isTodaySelected = selectedDate === todayDateLocal(cityTz);
+  const lateDay = !loading && isTodaySelected && isAfter5pmLocal(cityTz);
 
   // Tail bucket: any single bucket holds >50% of normalized probability
   const hasTailBucket = !loading && event !== null && (() => {
@@ -448,7 +452,7 @@ export default function Dashboard() {
               event ? `${CITIES[cityKey].kalshiSeries} · ${formatDateShort(event.resolutionDate)}${event.source === "resolved" ? " · final" : ""}` :
               undefined
             }
-            note={!loading && !marketsError && lateDay && !isPastSelected ? (
+            note={!loading && !marketsError && lateDay ? (
               <p className="mt-1.5 text-xs text-amber-500/80">Market may reflect observed temperature</p>
             ) : undefined}
           />
@@ -466,7 +470,7 @@ export default function Dashboard() {
             }
             sub={
               forecastsError ? "Could not reach NWS" :
-              forecast ? `24hr max · ${formatDateShort(forecast.forecastDate)} · ${forecast.shortForecast ?? ""} · Updated ${formatUpdatedTime(forecast.fetchedAt, cityTz)}` :
+              forecast ? `24hr max · ${formatDateShort(forecast.forecastDate)} · ${forecast.shortForecast ?? ""} · Updated ${formatUpdatedTime(forecast.fetchedAt, cityTz, forecast.forecastDate)}` :
               undefined
             }
           />
