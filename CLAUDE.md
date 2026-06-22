@@ -159,11 +159,12 @@ historical accuracy.
 
 ## Current Status
 - Phase: Post Phase 4 — monitoring, data accumulation, pre-launch
-- Last completed: Full Phase 4 including multi-city, rebrand, domain, NWS 3-hour updates
-- Currently working on: Letting data accumulate across 6 cities before public launch (target: ~Jun 17)
+- Last completed: Daily low temperature markets (High/Low toggle) across all 6 cities
+- Currently working on: Letting data accumulate across 6 cities — now tracking BOTH daily-high and daily-low markets — before public launch
 - Next milestone: Public launch — HN, Reddit, Twitter/X, LinkedIn
 - Still deferred: Polymarket panel (see Polymarket API notes — tag/parser changes needed first)
 - Reminder: enable Web Analytics in Vercel project settings if not done yet
+- Low-market data accumulating from the Jun 22 deploy forward; first low accuracy scores ~Jun 24
 
 ## Matching Logic
 
@@ -383,6 +384,16 @@ Three angles:
 - Score-accuracy cron moved to 10 AM UTC for Pacific city CLI report timing
 - /api/accuracy now city-filtered to keep scoreboard/table per-city as new cities start scoring
 
+### 2026-06-22 — Daily low temperature markets
+- Added daily low temperature markets for all 6 cities: KXLOWTNYC, KXLOWTCHI, KXLOWTLAX, KXLOWTMIA, KXLOWTSFO, KXLOWTDEN (uniform `KXLOWT{city}` naming — unlike highs, which are mixed; the legacy `KXLOW{city}`/`MINNYC` variants are dead). New `lowSeries` field on each city in cities.ts; new helpers `isLowSeries`, `seriesForView`, `getViewOrDefault`, `TempView` type
+- High/Low toggle on the dashboard (defaults to High) — switches the Kalshi implied card, NWS forecast card (label flips "24hr max" ↔ "24hr min"), distribution chart, implied-temp-over-time chart, and the historical accuracy section. View is threaded as a `?view=high|low` query param through /api/markets/live, /api/markets/history, /api/accuracy, and /api/accuracy/horizons
+- Pipeline: fetch-markets now snapshots both the high and low series per city (series_ticker stores the actual ticker); compute-comparisons wires low series (`KXLOWT*`) to forecast `low_temp` instead of `max_temp_24h`; score-accuracy uses the CLI MINIMUM line for low series (same `nws_climatological` source), caching the combined CLI report per city+date so one fetch serves both high and low
+- fetch-cli-temp.ts: `parseCliReport` now returns `{ date, maxTemp, minTemp }` from a single fetched report; added `getCliMinTemp()` and shared `getCliReport()` — no second network call
+- Accuracy filtering by view joins through `comparisons.series_ticker` (accuracy_scores has no series column); pre-existing high-only scores default to the High view
+- Display fix: /api/forecasts/current returns `low_temp` from the EARLIEST fetch of the day for today (pre-dawn) to avoid post-dawn coverage-truncation bias — see schema note; future dates use the latest fetch as normal
+- Low-liquidity warning added for NYC and LA lows (<5% of their high volume: NYC ~4.9%, LA ~2.5% measured Jun 22) — "Low temperature market has limited liquidity — implied temperature may be less reliable"
+- Low series market_snapshots accumulate from this deploy forward; first low accuracy scores expected ~2 days out (after compute-comparisons + score-accuracy run against resolved dates)
+
 ## Database Schema
 
 ### market_snapshots
@@ -444,12 +455,27 @@ Fields:
 - forecast_date: date — the date being forecast
 - max_temp_24h: numeric — TRUE 24hr high across all hourly periods (PRIMARY comparison field vs Kalshi)
 - daytime_high: numeric — highest temp 6am-8pm (context only)
-- low_temp: numeric — overnight low
+- low_temp: numeric — TRUE calendar-day (midnight–midnight local) minimum across all hourly periods (PRIMARY comparison field vs Kalshi KXLOWT* lows)
 - precip_prob: numeric — probability of precipitation (%)
 - short_forecast: text — e.g. 'Mostly Sunny'
 - source: text — 'nws'
 - fetched_at: timestamptz
 - created_at: timestamptz
+
+### forecasts field note: low_temp is calendar-day min, but mind fetch timing
+`low_temp` is computed exactly like `max_temp_24h` — `Math.min`/`Math.max` over
+every hourly period whose local date matches the forecast date (midnight–midnight
+in the city's timezone). It is the true calendar-day minimum, NOT an NWS 12-hour
+"overnight low" period. The two fields are symmetric.
+
+**Display caveat:** the daily MIN usually occurs pre-dawn, and the hourly endpoint
+only returns hours forward from "now" — so a fetch taken after dawn on the
+resolution day loses the early-morning hours and `low_temp` creeps upward (observed
+Jun 18: 66°F at the earliest fetch → 80°F by the last). For DISPLAY, always use the
+EARLIEST fetch of the day for today's `low_temp` (`/api/forecasts/current` does
+this). SCORING is unaffected: it anchors to the next-day market (~24h horizon), and
+the full next calendar day is in the future at fetch time, so coverage is complete.
+The daily MAX (mid-afternoon) does not have this problem to the same degree.
 
 ### comparisons
 Derived table — output of the matching engine. Links a market snapshot
