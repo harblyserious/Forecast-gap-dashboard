@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "./supabase";
+import { isLowSeries, type TempView } from "./cities";
 
 // ─── Row types (match create-schema.sql exactly) ──────────────────────────────
 
@@ -319,9 +320,32 @@ export async function getUpcomingForecasts(city: string, today: string): Promise
   return [...seen.values()];
 }
 
+// Maps comparison ids to their series_ticker (the event ticker, e.g.
+// "KXLOWTNYC-26JUN23"). accuracy_scores stores no series, so this is how we
+// tell whether a score belongs to a high or low market.
+async function getSeriesByComparisonIds(ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (ids.length === 0) return out;
+  const { data, error } = await supabaseAdmin
+    .from("comparisons")
+    .select("id, series_ticker")
+    .in("id", ids);
+  if (error) throw new Error(`getSeriesByComparisonIds: ${error.message}`);
+  for (const r of (data ?? []) as { id: string; series_ticker: string }[]) {
+    out.set(r.id, r.series_ticker);
+  }
+  return out;
+}
+
 // Returns accuracy_scores for the last N days, ordered newest-first,
-// optionally filtered to one city. Used by /api/accuracy.
-export async function getAccuracyHistory(days: number, city?: string): Promise<AccuracyScore[]> {
+// optionally filtered to one city and to one view (high/low). Used by /api/accuracy.
+// View filtering joins through comparisons.series_ticker; scores whose series is
+// unknown (older rows) default to the high view, since lows did not exist then.
+export async function getAccuracyHistory(
+  days: number,
+  city?: string,
+  view?: TempView
+): Promise<AccuracyScore[]> {
   const since = new Date();
   since.setDate(since.getDate() - days);
   const sinceDate = since.toISOString().slice(0, 10);
@@ -335,7 +359,11 @@ export async function getAccuracyHistory(days: number, city?: string): Promise<A
 
   const { data, error } = await query;
   if (error) throw new Error(`getAccuracyHistory: ${error.message}`);
-  return (data ?? []) as AccuracyScore[];
+  const rows = (data ?? []) as AccuracyScore[];
+  if (!view) return rows;
+
+  const seriesById = await getSeriesByComparisonIds(rows.map((r) => r.comparison_id));
+  return rows.filter((r) => isLowSeries(seriesById.get(r.comparison_id)) === (view === "low"));
 }
 
 // Returns the most recent comparison per comparison_date for a city,

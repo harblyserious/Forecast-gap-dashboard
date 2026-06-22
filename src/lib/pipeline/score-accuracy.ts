@@ -5,8 +5,8 @@ import {
   type Comparison,
   type InsertAccuracyScore,
 } from "../database";
-import { getCliMaxTemp } from "./fetch-cli-temp";
-import { getCityOrDefault } from "../cities";
+import { getCliReport, type CliReport } from "./fetch-cli-temp";
+import { getCityOrDefault, isLowSeries } from "../cities";
 import { resolutionTimeUtc } from "../resolution-time";
 
 export interface ScoreAccuracyResult {
@@ -87,16 +87,24 @@ export async function runScoreAccuracy(): Promise<ScoreAccuracyResult> {
     toScore.push(chosen);
   }
 
-  // Cache CLI results per city+date to avoid redundant fetches
-  const cliCache = new Map<string, number>();
+  // Cache the CLI report per city+date — one fetched report serves both the
+  // high (MAXIMUM) and low (MINIMUM) markets that resolve on the same date.
+  const cliCache = new Map<string, CliReport>();
 
   for (const comp of toScore) {
     try {
       const cacheKey = `${comp.city}|${comp.comparison_date}`;
-      let actualTemp = cliCache.get(cacheKey);
-      if (actualTemp === undefined) {
-        actualTemp = await getCliMaxTemp(comp.comparison_date, comp.city);
-        cliCache.set(cacheKey, actualTemp);
+      let report = cliCache.get(cacheKey);
+      if (report === undefined) {
+        report = await getCliReport(comp.comparison_date, comp.city);
+        cliCache.set(cacheKey, report);
+      }
+
+      // Low markets settle against the CLI MINIMUM line; highs against MAXIMUM.
+      const low = isLowSeries(comp.series_ticker);
+      const actualTemp = low ? report.minTemp : report.maxTemp;
+      if (actualTemp === null) {
+        throw new Error(`CLI ${low ? "MINIMUM" : "MAXIMUM"} line missing`);
       }
 
       const marketError = parseFloat(Math.abs(actualTemp - comp.implied_temp).toFixed(2));

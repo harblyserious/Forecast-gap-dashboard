@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { CITIES, DEFAULT_CITY } from "@/lib/cities";
+import { CITIES, DEFAULT_CITY, seriesForView, type TempView } from "@/lib/cities";
 
 const DistributionChart = dynamic(
   () => import("@/components/distribution-chart"),
@@ -25,9 +25,13 @@ interface MarketEvent {
   snapshotImpliedTemp: number | null; snapshotFetchedAt: string | null;
 }
 interface ForecastRow {
-  forecastDate: string; maxTemp24h: number; daytimeHigh: number | null;
+  forecastDate: string; maxTemp24h: number; lowTemp: number | null; daytimeHigh: number | null;
   shortForecast: string | null; fetchedAt: string;
 }
+
+// Cities whose daily-low Kalshi volume runs below ~5% of their daily-high volume
+// (NYC ~4.9%, LA ~2.5%, measured 2026-06-22) — implied lows are noisier there.
+const LOW_LIQUIDITY_CITIES = new Set(["nyc", "lax"]);
 interface ScoreRow {
   date: string; actualTemp: number; impliedTemp: number; nwsTemp: number;
   marketError: number; nwsError: number; winner: "market" | "nws" | "tie";
@@ -170,7 +174,8 @@ function LiveBadge({ isLive, fetchedAt, timeZone }: { isLive: boolean; fetchedAt
 
 export default function Dashboard() {
   const [cityKey,        setCityKey]        = useState(DEFAULT_CITY);
-  const [loadedCity,     setLoadedCity]     = useState<string | null>(null);
+  const [view,           setView]           = useState<TempView>("high"); // default High on load
+  const [loadedKey,      setLoadedKey]      = useState<string | null>(null);
   const [markets,        setMarkets]        = useState<MarketEvent[]>([]);
   const [forecasts,      setForecasts]      = useState<ForecastRow[]>([]);
   const [scores,         setScores]         = useState<ScoreRow[]>([]);
@@ -188,19 +193,21 @@ export default function Dashboard() {
   const [pastOpen,       setPastOpen]       = useState(false);
   // Final snapshot batch for a selected past date, keyed by date so stale
   // results never render and no synchronous state clearing is needed
-  const [pastResolved,   setPastResolved]   = useState<{ date: string; event: MarketEvent | null } | null>(null);
+  const [pastResolved,   setPastResolved]   = useState<{ date: string; view: TempView; event: MarketEvent | null } | null>(null);
 
   // Loading flags derived from which request keys have completed — avoids
-  // synchronous setState inside effects (react-hooks/set-state-in-effect)
-  const loading        = loadedCity !== cityKey;
-  const historyKey     = selectedDate ? `${cityKey}|${selectedDate}` : null;
+  // synchronous setState inside effects (react-hooks/set-state-in-effect).
+  // The key includes view so toggling High/Low re-enters the loading state.
+  const viewKey        = `${cityKey}|${view}`;
+  const loading        = loadedKey !== viewKey;
+  const historyKey     = selectedDate ? `${cityKey}|${view}|${selectedDate}` : null;
   const historyLoading = historyKey !== null && loadedHistory !== historyKey;
 
   useEffect(() => {
     Promise.allSettled([
-      fetch(`/api/markets/live?city=${cityKey}`).then((r)      => r.json()),
-      fetch(`/api/forecasts/current?city=${cityKey}`).then((r) => r.json()),
-      fetch(`/api/accuracy?city=${cityKey}`).then((r)          => r.json()),
+      fetch(`/api/markets/live?city=${cityKey}&view=${view}`).then((r) => r.json()),
+      fetch(`/api/forecasts/current?city=${cityKey}`).then((r)         => r.json()),
+      fetch(`/api/accuracy?city=${cityKey}&view=${view}`).then((r)     => r.json()),
     ]).then(([mRes, fRes, aRes]) => {
       if (mRes.status === "fulfilled" && !mRes.value?.error) {
         const events: MarketEvent[] = mRes.value.events ?? [];
@@ -231,10 +238,10 @@ export default function Dashboard() {
       } else {
         setAccuracyError(true);
       }
-      setLoadedCity(cityKey);
+      setLoadedKey(viewKey);
     });
 
-    fetch(`/api/accuracy/horizons?city=${cityKey}`)
+    fetch(`/api/accuracy/horizons?city=${cityKey}&view=${view}`)
       .then((r) => r.json())
       .then((d) => {
         if (!d?.error) {
@@ -243,13 +250,13 @@ export default function Dashboard() {
         }
       })
       .catch(() => {});
-  }, [cityKey]);
+  }, [cityKey, view, viewKey]);
 
   // Implied temp history for the selected date
   useEffect(() => {
     if (!selectedDate) return;
-    const key = `${cityKey}|${selectedDate}`;
-    fetch(`/api/markets/history?date=${selectedDate}&city=${cityKey}`)
+    const key = `${cityKey}|${view}|${selectedDate}`;
+    fetch(`/api/markets/history?date=${selectedDate}&city=${cityKey}&view=${view}`)
       .then((r) => r.json())
       .then((d) => {
         if (!d?.error) {
@@ -261,34 +268,38 @@ export default function Dashboard() {
       })
       .catch(() => setHistory([]))
       .finally(() => setLoadedHistory(key));
-  }, [selectedDate, cityKey]);
+  }, [selectedDate, cityKey, view]);
 
   // Final market state for a selected past date (no live market exists)
   useEffect(() => {
     if (!selectedDate || selectedDate >= todayDateLocal(CITIES[cityKey].timeZone)) return;
     const date = selectedDate;
-    fetch(`/api/markets/live?city=${cityKey}&date=${date}`)
+    const reqView = view;
+    fetch(`/api/markets/live?city=${cityKey}&view=${reqView}&date=${date}`)
       .then((r) => r.json())
       .then((d) => {
         const events: MarketEvent[] = d?.error ? [] : d.events ?? [];
-        setPastResolved({ date, event: events[0] ?? null });
+        setPastResolved({ date, view: reqView, event: events[0] ?? null });
       })
-      .catch(() => setPastResolved({ date, event: null }));
-  }, [selectedDate, cityKey]);
+      .catch(() => setPastResolved({ date, view: reqView, event: null }));
+  }, [selectedDate, cityKey, view]);
 
   // Past-day navigation: resolved dates selectable from the dropdown
   const cityTz         = CITIES[cityKey].timeZone;
   const pastDates      = getPastDates(cityTz);
   const isPastSelected = selectedDate !== null && selectedDate < todayDateLocal(cityTz);
   const selectedScore  = isPastSelected ? scores.find((s) => s.date === selectedDate) ?? null : null;
-  const pastEvent      = isPastSelected && pastResolved?.date === selectedDate ? pastResolved.event : null;
-  const pastLoading    = isPastSelected && pastResolved?.date !== selectedDate;
+  const pastResolvedMatches = pastResolved?.date === selectedDate && pastResolved?.view === view;
+  const pastEvent      = isPastSelected && pastResolvedMatches ? pastResolved!.event : null;
+  const pastLoading    = isPastSelected && !pastResolvedMatches;
 
   const event       = markets.find((e) => e.resolutionDate === selectedDate) ?? pastEvent;
   const forecast    = forecasts.find((f) => f.forecastDate === selectedDate) ?? null;
   const impliedTemp = event?.impliedTemp ?? null;
+  // NWS comparison value: 24hr max for the High view, calendar-day min for Low.
+  const forecastNws = forecast ? (view === "low" ? forecast.lowTemp : forecast.maxTemp24h) : null;
   // Past dates fall back to the forecast captured at scoring time
-  const nwsTemp     = forecast?.maxTemp24h ?? selectedScore?.nwsTemp ?? null;
+  const nwsTemp     = forecastNws ?? selectedScore?.nwsTemp ?? null;
   const gap         = impliedTemp !== null && nwsTemp !== null
     ? parseFloat((impliedTemp - nwsTemp).toFixed(1)) : null;
 
@@ -296,6 +307,10 @@ export default function Dashboard() {
   // tomorrow's market is still a genuine forecast and past dates are settled
   const isTodaySelected = selectedDate === todayDateLocal(cityTz);
   const lateDay = !loading && isTodaySelected && isAfter5pmLocal(cityTz);
+
+  // Low-temp markets are materially thinner in a couple of cities — warn that
+  // the implied temperature may be less reliable there.
+  const showLowLiquidity = !loading && view === "low" && LOW_LIQUIDITY_CITIES.has(cityKey);
 
   // Tail bucket: any single bucket holds >50% of normalized probability
   const hasTailBucket = !loading && event !== null && (() => {
@@ -415,6 +430,28 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* ── High / Low toggle ───────────────────────────────────────────── */}
+        <div className="mb-4 flex items-center gap-3">
+          <div className="inline-flex rounded-lg border border-slate-700 bg-slate-800 p-0.5">
+            {(["high", "low"] as TempView[]).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+                  view === v
+                    ? "bg-violet-600 text-white"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {v === "high" ? "Daily High" : "Daily Low"}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-slate-500">
+            {view === "high" ? "Highest temperature" : "Lowest temperature"} · {CITIES[cityKey].displayName}
+          </span>
+        </div>
+
         {/* ── Summary cards ───────────────────────────────────────────────── */}
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
           {/* Kalshi implied */}
@@ -451,7 +488,7 @@ export default function Dashboard() {
             }
             sub={
               marketsError && !isPastSelected ? "Could not reach Kalshi" :
-              event ? `${CITIES[cityKey].kalshiSeries} · ${formatDateShort(event.resolutionDate)}${event.source === "resolved" ? " · final" : ""}` :
+              event ? `${seriesForView(CITIES[cityKey], view)} · ${formatDateShort(event.resolutionDate)}${event.source === "resolved" ? " · final" : ""}` :
               undefined
             }
             note={!loading && !marketsError && lateDay ? (
@@ -472,7 +509,7 @@ export default function Dashboard() {
             }
             sub={
               forecastsError ? "Could not reach NWS" :
-              forecast ? `24hr max · ${formatDateShort(forecast.forecastDate)} · ${forecast.shortForecast ?? ""} · Updated ${formatUpdatedTime(forecast.fetchedAt, cityTz, forecast.forecastDate)}` :
+              forecast ? `${view === "low" ? "24hr min" : "24hr max"} · ${formatDateShort(forecast.forecastDate)} · ${forecast.shortForecast ?? ""} · Updated ${formatUpdatedTime(forecast.fetchedAt, cityTz, forecast.forecastDate)}` :
               undefined
             }
           />
@@ -515,6 +552,11 @@ export default function Dashboard() {
             <div className="flex h-[280px] items-center justify-center text-slate-500 text-sm">
               No market data for this date
             </div>
+          )}
+          {showLowLiquidity && (
+            <p className="mt-3 text-xs text-amber-500/80">
+              Low temperature market has limited liquidity — implied temperature may be less reliable
+            </p>
           )}
           {hasTailBucket && (
             <p className="mt-3 text-xs text-amber-500/80">

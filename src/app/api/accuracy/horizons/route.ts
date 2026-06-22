@@ -8,7 +8,7 @@ import {
 } from "@/lib/database";
 import { impliedTempFromSnapshots } from "@/lib/implied-temp";
 import { hoursToResolution } from "@/lib/resolution-time";
-import { getCityOrDefault } from "@/lib/cities";
+import { getCityOrDefault, getViewOrDefault, seriesForView } from "@/lib/cities";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +30,12 @@ export async function GET(request: NextRequest) {
   const daysParam = request.nextUrl.searchParams.get("days");
   const days      = daysParam ? Math.min(Math.max(parseInt(daysParam, 10) || 30, 1), 365) : 30;
   const city      = getCityOrDefault(request.nextUrl.searchParams.get("city"));
+  const view      = getViewOrDefault(request.nextUrl.searchParams.get("view"));
 
   try {
-    // Ground truth: scored dates and their observed temps (Kalshi/CLI source)
-    const scores = await getAccuracyHistory(days, city.key);
+    // Ground truth: scored dates and their observed temps (Kalshi/CLI source),
+    // filtered to the requested view so high and low don't collide per date.
+    const scores = await getAccuracyHistory(days, city.key, view);
     const actualByDate = new Map<string, number>();
     for (const s of scores) {
       if (s.actual_source === "nws_climatological" && s.city === city.key) {
@@ -44,7 +46,7 @@ export async function GET(request: NextRequest) {
     if (dates.length === 0) return NextResponse.json({ horizons: [], dates: [] });
 
     const [snapshots, forecasts] = await Promise.all([
-      getAllSnapshotsForDates(city.kalshiSeries, city.key, dates),
+      getAllSnapshotsForDates(seriesForView(city, view), city.key, dates),
       getForecastHistoryForDates(city.key, dates),
     ]);
 
@@ -93,15 +95,17 @@ export async function GET(request: NextRequest) {
         mErrs.push(Math.abs(actual - implied));
         marketErrors.set(target, mErrs);
 
-        // NWS forecast that was current at this batch's fetch time
+        // NWS forecast that was current at this batch's fetch time —
+        // calendar-day min for lows, 24hr max for highs.
         const history = forecastsByDate.get(date) ?? [];
         let current: Forecast | null = null;
         for (const f of history) {
           if (f.fetched_at <= best.fetchedAt) current = f;
         }
-        if (current) {
+        const nwsForecastTemp = current ? (view === "low" ? current.low_temp : current.max_temp_24h) : null;
+        if (nwsForecastTemp !== null) {
           const nErrs = nwsErrors.get(target) ?? [];
-          nErrs.push(Math.abs(actual - current.max_temp_24h));
+          nErrs.push(Math.abs(actual - nwsForecastTemp));
           nwsErrors.set(target, nErrs);
         }
       }

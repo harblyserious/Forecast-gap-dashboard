@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAllSnapshotsForDates, getForecastHistoryForDates, type MarketSnapshot } from "@/lib/database";
 import { impliedTempFromSnapshots } from "@/lib/implied-temp";
 import { hoursToResolution } from "@/lib/resolution-time";
-import { getCityOrDefault } from "@/lib/cities";
+import { getCityOrDefault, getViewOrDefault, seriesForView } from "@/lib/cities";
 
 export const dynamic = "force-dynamic";
 
@@ -12,13 +12,14 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const date = request.nextUrl.searchParams.get("date");
   const city = getCityOrDefault(request.nextUrl.searchParams.get("city"));
+  const view = getViewOrDefault(request.nextUrl.searchParams.get("view"));
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return NextResponse.json({ error: "date param required (YYYY-MM-DD)" }, { status: 400 });
   }
 
   try {
     const [snapshots, forecasts] = await Promise.all([
-      getAllSnapshotsForDates(city.kalshiSeries, city.key, [date]),
+      getAllSnapshotsForDates(seriesForView(city, view), city.key, [date]),
       getForecastHistoryForDates(city.key, [date]),
     ]);
 
@@ -39,8 +40,10 @@ export async function GET(request: NextRequest) {
       .filter((p) => p.impliedTemp > 0 && p.hoursToResolution >= 0)
       .sort((a, b) => b.hoursToResolution - a.hoursToResolution);
 
-    // Latest NWS forecast for the date as the reference line
-    const nwsTemp = forecasts.length > 0 ? forecasts[forecasts.length - 1].max_temp_24h : null;
+    // Latest NWS forecast for the date as the reference line — max for highs,
+    // calendar-day min for lows.
+    const latest = forecasts.length > 0 ? forecasts[forecasts.length - 1] : null;
+    const nwsTemp = latest ? (view === "low" ? latest.low_temp : latest.max_temp_24h) : null;
 
     return NextResponse.json({ date, points, nwsTemp });
   } catch (err) {

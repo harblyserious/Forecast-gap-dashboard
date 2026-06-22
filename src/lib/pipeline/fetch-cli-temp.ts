@@ -38,7 +38,15 @@ async function fetchCliHtml(version: number, cityKey: string): Promise<string> {
   throw new Error(`CLI version ${version} failed after retries: ${lastErr!.message}`);
 }
 
-function parseCliReport(html: string): { date: string; maxTemp: number } | null {
+export interface CliReport {
+  date: string;
+  /** Observed daily max (CLI MAXIMUM line) — null if the line is missing. */
+  maxTemp: number | null;
+  /** Observed daily min (CLI MINIMUM line) — null if the line is missing. */
+  minTemp: number | null;
+}
+
+function parseCliReport(html: string): CliReport | null {
   const preMatch = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
   if (!preMatch) return null;
   const text = preMatch[1];
@@ -53,30 +61,37 @@ function parseCliReport(html: string): { date: string; maxTemp: number } | null 
   const day = parts[1].padStart(2, "0");
   const year = parts[2];
 
+  // Both observed-value lines share the same format; the trailing \s before the
+  // captured number's neighbours guards against matching the summary-block lines
+  // (" MAXIMUM TEMPERATURE (F)  ...") which have text, not a number, after the label.
   // "  MAXIMUM         83    120 PM  95    1895  76      7       79"
   const maxMatch = text.match(/^\s+MAXIMUM\s+(\d+)\s/m);
-  if (!maxMatch) return null;
+  // "  MINIMUM         65    522 AM  49    1897  66     -1       72"
+  const minMatch = text.match(/^\s+MINIMUM\s+(\d+)\s/m);
 
   return {
     date: `${year}-${month}-${day}`,
-    maxTemp: parseInt(maxMatch[1], 10),
+    maxTemp: maxMatch ? parseInt(maxMatch[1], 10) : null,
+    minTemp: minMatch ? parseInt(minMatch[1], 10) : null,
   };
 }
 
 /**
- * Returns the observed max temperature (°F) for a given date from the NWS
- * Daily Climate Report (CLI) for Central Park (KNYC / KOKX). This is the
- * exact source Kalshi uses to resolve KXHIGHNY contracts.
+ * Returns the full observed CLI report (max and min temperature, °F) for a
+ * given date from the NWS Daily Climate Report (CLI) for a city's settlement
+ * station. This is the exact source Kalshi uses to resolve both KXHIGH* (max)
+ * and KXLOWT* (min) contracts.
  *
  * Scans CLI versions starting from the estimated version for the target date
  * and takes the first match (= the final report, which has the lower version
- * number vs. the same-day preliminary).
+ * number vs. the same-day preliminary). A single fetched report yields both the
+ * MAXIMUM and MINIMUM lines, so high and low scoring share one network scan.
  *
  * @param targetDate - YYYY-MM-DD, must be a past date (CLI not yet issued for today)
  * @param cityKey - city config key (defaults to nyc); selects CLI site/issuedby
  * @throws if the target date cannot be found within MAX_SCAN_VERSIONS
  */
-export async function getCliMaxTemp(targetDate: string, cityKey: string = DEFAULT_CITY): Promise<number> {
+export async function getCliReport(targetDate: string, cityKey: string = DEFAULT_CITY): Promise<CliReport> {
   // Days between target date and today (UTC noon to avoid DST edge cases)
   const todayMs = Date.now();
   const targetMs = new Date(targetDate + "T12:00:00Z").getTime();
@@ -90,11 +105,29 @@ export async function getCliMaxTemp(targetDate: string, cityKey: string = DEFAUL
     const html = await fetchCliHtml(version, cityKey);
     const parsed = parseCliReport(html);
     if (parsed?.date === targetDate) {
-      return parsed.maxTemp;
+      return parsed;
     }
   }
 
   throw new Error(
-    `CLI max temp not found for ${targetDate} (scanned versions ${startVersion}–${endVersion})`
+    `CLI report not found for ${targetDate} (scanned versions ${startVersion}–${endVersion})`
   );
+}
+
+/** Observed daily MAX temperature (°F) — the resolution source for KXHIGH* markets. */
+export async function getCliMaxTemp(targetDate: string, cityKey: string = DEFAULT_CITY): Promise<number> {
+  const report = await getCliReport(targetDate, cityKey);
+  if (report.maxTemp === null) {
+    throw new Error(`CLI MAXIMUM line missing for ${targetDate} (${cityKey})`);
+  }
+  return report.maxTemp;
+}
+
+/** Observed daily MIN temperature (°F) — the resolution source for KXLOWT* markets. */
+export async function getCliMinTemp(targetDate: string, cityKey: string = DEFAULT_CITY): Promise<number> {
+  const report = await getCliReport(targetDate, cityKey);
+  if (report.minTemp === null) {
+    throw new Error(`CLI MINIMUM line missing for ${targetDate} (${cityKey})`);
+  }
+  return report.minTemp;
 }

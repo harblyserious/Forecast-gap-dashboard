@@ -1,5 +1,6 @@
 import { insertComparison, type MarketSnapshot, type Forecast, type InsertComparison } from "../database";
 import { supabaseAdmin } from "../supabase";
+import { isLowSeries } from "../cities";
 
 export interface ComputeComparisonsResult {
   inserted: number;
@@ -113,8 +114,17 @@ export async function runComputeComparisons(): Promise<ComputeComparisonsResult>
       continue;
     }
 
+    // Low markets compare against the forecast's calendar-day minimum; highs
+    // against the 24hr max. series_ticker on the snapshot is the Kalshi series
+    // (e.g. "KXLOWTNYC" vs "KXHIGHNY").
+    const low = isLowSeries(rep.series_ticker);
+    const nws_temp = low ? forecast.low_temp : forecast.max_temp_24h;
+    if (nws_temp === null) {
+      result.skipped++;
+      continue;
+    }
+
     const implied_temp  = parseFloat(computeImpliedTemp(buckets).toFixed(2));
-    const nws_temp      = forecast.max_temp_24h;
     const gap           = parseFloat((implied_temp - nws_temp).toFixed(2));
     const gap_direction = gap > 1 ? "market_warmer" : gap < -1 ? "nws_warmer" : "agree";
 

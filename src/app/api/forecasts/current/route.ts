@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUpcomingForecasts, insertForecast, type Forecast } from "@/lib/database";
+import { getUpcomingForecasts, getForecastHistoryForDates, insertForecast, type Forecast } from "@/lib/database";
 import { getGridPoint, getForecastHourly } from "@/lib/noaa-client";
 import { computeForecastFields } from "@/lib/pipeline/fetch-forecasts";
 import { getCityOrDefault } from "@/lib/cities";
@@ -56,9 +56,23 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // For TODAY, the calendar-day minimum usually occurs pre-dawn. Later same-day
+    // fetches lose those early hours from the hourly forecast (coverage only runs
+    // forward from "now"), biasing the low upward — so for today we take low_temp
+    // from the EARLIEST fetch of the date. Future dates have full coverage at every
+    // fetch, so their latest fetch (already in `rows`) is correct.
+    let earliestTodayLow: number | null = null;
+    try {
+      const todayHistory = await getForecastHistoryForDates(city.key, [today]); // ascending by fetched_at
+      earliestTodayLow = todayHistory.length > 0 ? todayHistory[0].low_temp : null;
+    } catch (e) {
+      console.error("Earliest-today forecast lookup failed (non-fatal):", (e as Error).message);
+    }
+
     const forecasts = rows.map((r) => ({
       forecastDate:  r.forecast_date,
       maxTemp24h:    r.max_temp_24h,
+      lowTemp:       r.forecast_date === today ? (earliestTodayLow ?? r.low_temp) : r.low_temp,
       daytimeHigh:   r.daytime_high,
       shortForecast: r.short_forecast,
       fetchedAt:     r.fetched_at,

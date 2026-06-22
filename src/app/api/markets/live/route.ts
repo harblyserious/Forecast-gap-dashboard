@@ -6,7 +6,7 @@ import {
   getLatestSnapshotBatchForDate,
   type MarketSnapshot,
 } from "@/lib/database";
-import { getCityOrDefault, type CityConfig } from "@/lib/cities";
+import { getCityOrDefault, getViewOrDefault, seriesForView, type CityConfig } from "@/lib/cities";
 
 export const dynamic = "force-dynamic";
 
@@ -71,11 +71,11 @@ function resolutionDateFromTicker(eventTicker: string): string | null {
 
 // ─── Live path ────────────────────────────────────────────────────────────────
 
-async function fetchLiveEvents(city: CityConfig): Promise<MarketEvent[]> {
+async function fetchLiveEvents(city: CityConfig, series: string): Promise<MarketEvent[]> {
   const fetchedAt = new Date().toISOString();
 
   const markets: KalshiMarket[] = await Promise.race([
-    getOpenMarkets(city.kalshiSeries),
+    getOpenMarkets(series),
     new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error("Kalshi timeout")), KALSHI_TIMEOUT_MS)
     ),
@@ -125,8 +125,8 @@ async function fetchLiveEvents(city: CityConfig): Promise<MarketEvent[]> {
 
 // ─── Fallback path (Supabase snapshots) ──────────────────────────────────────
 
-async function fetchCachedEvents(today: string, city: CityConfig): Promise<MarketEvent[]> {
-  const snapshots = await getRecentSnapshotsForSeries(city.kalshiSeries, city.key, today);
+async function fetchCachedEvents(today: string, city: CityConfig, series: string): Promise<MarketEvent[]> {
+  const snapshots = await getRecentSnapshotsForSeries(series, city.key, today);
   if (snapshots.length === 0) return [];
 
   // Dedupe: latest snapshot per (event_ticker, market_ticker)
@@ -172,8 +172,8 @@ async function fetchCachedEvents(today: string, city: CityConfig): Promise<Marke
 
 // ─── Resolved path (final snapshot batch for a past date) ────────────────────
 
-async function fetchResolvedEvent(city: CityConfig, date: string): Promise<MarketEvent[]> {
-  const batch = await getLatestSnapshotBatchForDate(city.kalshiSeries, city.key, date);
+async function fetchResolvedEvent(city: CityConfig, date: string, series: string): Promise<MarketEvent[]> {
+  const batch = await getLatestSnapshotBatchForDate(series, city.key, date);
   if (batch.length === 0) return [];
 
   const buckets: Bucket[] = batch.map((s) => ({
@@ -199,6 +199,8 @@ async function fetchResolvedEvent(city: CityConfig, date: string): Promise<Marke
 
 export async function GET(request: NextRequest) {
   const city  = getCityOrDefault(request.nextUrl.searchParams.get("city"));
+  const view  = getViewOrDefault(request.nextUrl.searchParams.get("view"));
+  const series = seriesForView(city, view);
   const date  = request.nextUrl.searchParams.get("date");
   const today = new Date().toLocaleDateString("en-CA", { timeZone: city.timeZone });
 
@@ -206,7 +208,7 @@ export async function GET(request: NextRequest) {
   // live market to fetch. Today/tomorrow (or no date) follows the live path.
   if (date && /^\d{4}-\d{2}-\d{2}$/.test(date) && date < today) {
     try {
-      const events = await fetchResolvedEvent(city, date);
+      const events = await fetchResolvedEvent(city, date, series);
       return NextResponse.json({ events });
     } catch (err) {
       return NextResponse.json({ error: (err as Error).message }, { status: 500 });
@@ -214,12 +216,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const events = await fetchLiveEvents(city);
+    const events = await fetchLiveEvents(city, series);
 
     // Attach earliest Supabase snapshot per event (best-effort — failures are silent)
     try {
       const dates     = events.map((e) => e.resolutionDate);
-      const snapshots = await getEarliestSnapshotsForDates(city.kalshiSeries, city.key, dates);
+      const snapshots = await getEarliestSnapshotsForDates(series, city.key, dates);
 
       // Group earliest-batch rows by resolution_date
       const byDate = new Map<string, MarketSnapshot[]>();
@@ -250,7 +252,7 @@ export async function GET(request: NextRequest) {
   } catch {
     // Kalshi is down, slow, or returned unusable data — serve from Supabase
     try {
-      const events = await fetchCachedEvents(today, city);
+      const events = await fetchCachedEvents(today, city, series);
       return NextResponse.json({ events });
     } catch (fallbackErr) {
       return NextResponse.json(
